@@ -1,0 +1,144 @@
+{
+  "regression": {
+    "version": "v1.0.0-reg",
+    "task": "regression",
+    "model_name": "LinearRegression Baseline-Benchmarked",
+    "data_source": "DS-003 Synthetic Institution Data (Seed 42)",
+    "is_synthetic": true,
+    "features": [
+      "prior_exam_avg",
+      "attendance_rate",
+      "assignment_rate"
+    ],
+    "split_method": "5-Fold Grouped CV",
+    "metrics": {
+      "mae": 5.66,
+      "rmse": 7.0,
+      "r2": 0.823,
+      "baselines": {
+        "mean_predictor_mae": 13.34,
+        "mean_predictor_r2": -0.005,
+        "last_score_mae": 7.12,
+        "last_score_r2": 0.714
+      },
+      "uncertainty_residual_std": 6.91
+    },
+    "artifact_path": "D:\\Projects\\Edwise\\backend\\app\\ml_engine\\artifacts\\regression_v1.joblib"
+  },
+  "classification": {
+    "version": "v1.0.0-clf",
+    "task": "classification",
+    "model_name": "LogisticRegression At-Risk Classifier",
+    "data_source": "DS-003 Synthetic Institution Data (Seed 42)",
+    "is_synthetic": true,
+    "features": [
+      "prior_exam_avg",
+      "attendance_rate",
+      "assignment_rate"
+    ],
+    "split_method": "5-Fold Grouped CV",
+    "metrics": {
+      "precision": 0.419,
+      "recall": 0.947,
+      "f1": 0.581,
+      "baselines": {
+        "majority_class_f1": 0.0
+      }
+    },
+    "artifact_path": "D:\\Projects\\Edwise\\backend\\app\\ml_engine\\artifacts\\classifier_v1.joblib"
+  },
+  "clustering": {
+    "version": "v1.0.0-clust",
+    "task": "clustering",
+    "model_name": "K-Means Exploratory Pattern Analysis",
+    "data_source": "DS-003 Synthetic Institution Data (Seed 42)",
+    "is_synthetic": true,
+    "features": [
+      "prior_exam_avg",
+      "attendance_rate",
+      "assignment_rate"
+    ],
+    "split_method": "Unsupervised",
+    "metrics": {
+      "n_clusters": 3,
+      "cluster_centers": [
+        {
+          "cluster_id": 0,
+          "label": "Cluster 1",
+          "student_count": 183,
+          "feature_means": {
+            "attendance_rate": 70.1,
+            "prior_exam_avg": 70.0,
+            "assignment_rate": 68.0
+          },
+          "description": "Moderate Engagement: Steady attendance with average assessment performance."
+        },
+        {
+          "cluster_id": 1,
+          "label": "Cluster 2",
+          "student_count": 133,
+          "feature_means": {
+            "attendance_rate": 86.3,
+            "prior_exam_avg": 85.9,
+            "assignment_rate": 87.3
+          },
+          "description": "High Engagement: High attendance, high assignment completion, and strong scores."
+        },
+        {
+          "cluster_id": 2,
+          "label": "Cluster 3",
+          "student_count": 84,
+          "feature_means": {
+            "attendance_rate": 49.1,
+            "prior_exam_avg": 48.0,
+            "assignment_rate": 48.9
+          },
+          "description": "Academic Attention: Lower attendance and assessment drop requiring teacher review."
+        }
+      ]
+    },
+    "artifact_path": "D:\\Projects\\Edwise\\backend\\app\\ml_engine\\artifacts\\kmeans_v1.joblib"
+  },
+  "random_forest": {
+    "version": "v1.0.0-rf",
+    "task": "regression",
+    "model_name": "Random Forest Regressor (120 Trees)",
+    "data_source": "DS-003 Synthetic Institution Data (Seed 42)",
+    "is_synthetic": true,
+    "features": [
+      "prior_exam_avg",
+      "attendance_rate",
+      "assignment_rate"
+    ],
+    "split_method": "5-Fold Grouped CV",
+    "metrics": {
+      "mae": 6.02,
+      "rmse": 7.51,
+      "r2": 0.797,
+      "cv_score": 0.779,
+      "uncertainty_residual_std": 2.87
+    },
+    "artifact_path": "D:\\Projects\\Edwise\\backend\\app\\ml_engine\\artifacts\\random_forest_v1.joblib"
+  },
+  "xgboost": {
+    "version": "v1.0.0-xgb",
+    "task": "regression",
+    "model_name": "XGBoost Regressor (Gradient Boosting)",
+    "data_source": "DS-003 Synthetic Institution Data (Seed 42)",
+    "is_synthetic": true,
+    "features": [
+      "prior_exam_avg",
+      "attendance_rate",
+      "assignment_rate"
+    ],
+    "split_method": "5-Fold Grouped CV",
+    "metrics": {
+      "mae": 6.28,
+      "rmse": 8.0,
+      "r2": 0.769,
+      "cv_score": 0.749,
+      "uncertainty_residual_std": 2.08
+    },
+    "artifact_path": "D:\\Projects\\Edwise\\backend\\app\\ml_engine\\artifacts\\xgboost_v1.joblib"
+  }
+}
