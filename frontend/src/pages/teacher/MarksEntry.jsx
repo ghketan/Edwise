@@ -7,9 +7,13 @@ import { extractApiError, getLocalDateString } from '../../utils/format';
 import { Plus, Save, CheckCircle, AlertCircle, Upload, FileText, Download } from 'lucide-react';
 
 export default function MarksEntry() {
-  const { teacherProfile, teacherId, activeSession } = useAuth();
+  const { teacherProfile, teacherId, activeSession, isAdmin } = useAuth();
   const [scopes, setScopes] = useState([]);
-  const [selectedScope, setSelectedScope] = useState('');
+  const [classes, setClasses] = useState([]);
+  const [selectedClassId, setSelectedClassId] = useState('');
+  const [classSubjects, setClassSubjects] = useState([]);
+  const [selectedSubjectId, setSelectedSubjectId] = useState('');
+  const [examTypeFilter, setExamTypeFilter] = useState('all');
   const [exams, setExams] = useState([]);
   const [selectedExamId, setSelectedExamId] = useState('');
   const [students, setStudents] = useState([]);
@@ -19,8 +23,8 @@ export default function MarksEntry() {
   // New exam form
   const [showCreateExam, setShowCreateExam] = useState(false);
   const [newExam, setNewExam] = useState({
-    name: '',
-    exam_type: 'exam',
+    name: 'Unit Test 1',
+    exam_type: 'unit_test',
     max_marks: 100,
     weightage: 1.0,
     date: getLocalDateString(),
@@ -50,52 +54,121 @@ export default function MarksEntry() {
   const currentTeacherId = teacherId || teacherProfile?.id;
   const sessionId = activeSession?.id;
 
-  // 1. Load teacher scopes
+  // 1. Load teacher classes & scopes
   useEffect(() => {
-    if (!currentTeacherId || !sessionId) return;
     let cancelled = false;
-    institutionApi
-      .getTeacherAssignments(currentTeacherId, sessionId)
-      .then((asgs) => {
-        if (!cancelled && Array.isArray(asgs)) {
-          setScopes(asgs);
-          if (asgs.length > 0) {
-            setSelectedScope((prev) =>
-              asgs.some((a) => String(a.id) === String(prev)) ? prev : String(asgs[0].id)
-            );
-          } else {
-            setSelectedScope('');
+    if (isAdmin) {
+      institutionApi
+        .getClasses(sessionId)
+        .then((clsList) => {
+          if (!cancelled && Array.isArray(clsList)) {
+            setClasses(clsList);
+            if (clsList.length > 0 && !selectedClassId) {
+              setSelectedClassId(String(clsList[0].id));
+            }
           }
-        }
-      })
-      .catch((err) => {
-        console.error('Failed to load teacher assignments:', err);
-      });
+        })
+        .catch((err) => console.error('Admin classes load error:', err));
+    } else if (currentTeacherId && sessionId) {
+      institutionApi
+        .getTeacherAssignments(currentTeacherId, sessionId)
+        .then((asgs) => {
+          if (!cancelled && Array.isArray(asgs)) {
+            setScopes(asgs);
+            const uniqueClassesMap = {};
+            asgs.forEach((a) => {
+              if (!uniqueClassesMap[a.class_id]) {
+                uniqueClassesMap[a.class_id] = {
+                  id: a.class_id,
+                  name: `Class #${a.class_id}`,
+                  section_id: a.section_id,
+                };
+              }
+            });
+            const clsList = Object.values(uniqueClassesMap);
+            setClasses(clsList);
+            if (clsList.length > 0 && !selectedClassId) {
+              setSelectedClassId(String(clsList[0].id));
+            }
+          }
+        })
+        .catch((err) => {
+          console.error('Failed to load teacher assignments:', err);
+        });
+    }
     return () => {
       cancelled = true;
     };
-  }, [currentTeacherId, sessionId]);
+  }, [currentTeacherId, sessionId, isAdmin]);
 
-  // 2. Load students and exams together for selected scope before exposing exam options
+  // 2. When selectedClassId changes, load subjects for this class and load whole class student list
   useEffect(() => {
-    if (!selectedScope) return;
-    const currentScope = scopes.find((s) => s.id === parseInt(selectedScope, 10));
-    if (!currentScope) return;
+    if (!selectedClassId) return;
+    let cancelled = false;
+
+    // Load whole class students
+    institutionApi
+      .getStudents(selectedClassId)
+      .then((stuList) => {
+        if (!cancelled) setStudents(Array.isArray(stuList) ? stuList : []);
+      })
+      .catch(() => {
+        if (!cancelled) setStudents([]);
+      });
+
+    // Load class subjects
+    institutionApi
+      .getClassSubjects(selectedClassId)
+      .then((subs) => {
+        if (!cancelled) {
+          const list = Array.isArray(subs) ? subs : [];
+          setClassSubjects(list);
+          if (list.length > 0) {
+            setSelectedSubjectId((prev) =>
+              list.some((s) => String(s.id) === String(prev)) ? prev : String(list[0].id)
+            );
+          } else {
+            setSelectedSubjectId('');
+          }
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          // Fallback to scopes
+          const fallbackSubs = scopes
+            .filter((s) => String(s.class_id) === String(selectedClassId))
+            .map((s) => ({ id: s.subject_id, name: `Subject #${s.subject_id}`, code: `SUB${s.subject_id}` }));
+          setClassSubjects(fallbackSubs);
+          if (fallbackSubs.length > 0) {
+            setSelectedSubjectId(String(fallbackSubs[0].id));
+          }
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedClassId, scopes]);
+
+  // 3. Load exams for selected class and subject
+  useEffect(() => {
+    if (!selectedClassId || !selectedSubjectId) {
+      setExams([]);
+      setSelectedExamId('');
+      return;
+    }
 
     let cancelled = false;
     setLoading(true);
 
-    Promise.all([
-      institutionApi.getStudents(currentScope.class_id, currentScope.section_id),
-      academicsApi.getExams({
-        session_id: currentScope.session_id,
-        class_id: currentScope.class_id,
-        subject_id: currentScope.subject_id,
-      }),
-    ])
-      .then(([stuList, examList]) => {
+    academicsApi
+      .getExams({
+        session_id: sessionId,
+        class_id: parseInt(selectedClassId, 10),
+        subject_id: parseInt(selectedSubjectId, 10),
+      })
+      .then((examList) => {
         if (cancelled) return;
-        setStudents(Array.isArray(stuList) ? stuList : []);
         const validExams = Array.isArray(examList) ? examList : [];
         setExams(validExams);
         if (validExams.length > 0) {
@@ -110,7 +183,7 @@ export default function MarksEntry() {
       })
       .catch((err) => {
         if (!cancelled) {
-          console.error('Failed to load scope students or exams:', err);
+          console.error('Failed to load exams:', err);
         }
       })
       .finally(() => {
@@ -122,7 +195,7 @@ export default function MarksEntry() {
     return () => {
       cancelled = true;
     };
-  }, [selectedScope, scopes]);
+  }, [selectedClassId, selectedSubjectId, sessionId]);
 
   // 3. Load existing marks for selected exam with short debounce to avoid aborted reloads
   useEffect(() => {
@@ -207,15 +280,16 @@ export default function MarksEntry() {
 
   const handleCreateExamSubmit = async (e) => {
     e.preventDefault();
-    const currentScope = scopes.find((s) => s.id === parseInt(selectedScope, 10));
-    if (!currentScope) return;
+    if (!selectedClassId || !selectedSubjectId) {
+      setMsg({ text: 'Please select both a class and a subject before creating an exam.', type: 'error' });
+      return;
+    }
 
     try {
       const created = await academicsApi.createExam({
-        session_id: currentScope.session_id,
-        class_id: currentScope.class_id,
-        section_id: currentScope.section_id,
-        subject_id: currentScope.subject_id,
+        session_id: sessionId || 1,
+        class_id: parseInt(selectedClassId, 10),
+        subject_id: parseInt(selectedSubjectId, 10),
         name: newExam.name.trim(),
         exam_type: newExam.exam_type,
         max_marks: parseFloat(newExam.max_marks),
@@ -476,54 +550,91 @@ export default function MarksEntry() {
         </div>
       )}
 
-      {/* Scope and Exam selector */}
+      {/* 3 Explicit Filters: 1. Class -> 2. Subject -> 3. Exam & Exam Type */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-wrap items-center gap-4">
+        {/* 1. Class Selector */}
         <div>
           <label className="block text-[11px] font-semibold text-slate-500 uppercase">
-            Teaching Scope (D-004)
+            1. Select Class
           </label>
           <select
-            value={selectedScope}
-            onChange={(e) => setSelectedScope(e.target.value)}
+            value={selectedClassId}
+            onChange={(e) => setSelectedClassId(e.target.value)}
             className="mt-1 text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
           >
-            {scopes.length === 0 && <option value="">No authorized scopes assigned</option>}
-            {scopes.map((s) => (
-              <option key={s.id} value={s.id}>
-                Class #{s.class_id} {s.section_id ? `(Sec #${s.section_id})` : ''} • Subject #{s.subject_id}
+            {classes.length === 0 && <option value="">No classes available</option>}
+            {classes.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name || `Class #${c.id}`}
               </option>
             ))}
           </select>
         </div>
 
+        {/* 2. Subject Selector */}
         <div>
           <label className="block text-[11px] font-semibold text-slate-500 uppercase">
-            Select Exam
+            2. Select Subject
           </label>
           <select
-            value={selectedExamId}
-            onChange={(e) => setSelectedExamId(e.target.value)}
+            value={selectedSubjectId}
+            onChange={(e) => setSelectedSubjectId(e.target.value)}
             className="mt-1 text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
           >
-            {exams.length === 0 ? (
-              <option value="">No exams created yet</option>
-            ) : (
-              exams.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.name} ({e.exam_type}) • Max: {e.max_marks} • Date: {e.date}
-                </option>
-              ))
-            )}
+            {classSubjects.length === 0 && <option value="">No subjects in class</option>}
+            {classSubjects.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name} ({s.code})
+              </option>
+            ))}
           </select>
+        </div>
+
+        {/* 3. Exam Type Filter & Exam Selector */}
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-500 uppercase">
+            3. Exam Type &amp; Assessment
+          </label>
+          <div className="flex items-center gap-2 mt-1">
+            <select
+              value={examTypeFilter}
+              onChange={(e) => setExamTypeFilter(e.target.value)}
+              className="text-xs font-medium px-2.5 py-1.5 rounded-lg border border-slate-300 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="all">All Types</option>
+              <option value="unit_test">Unit Tests</option>
+              <option value="midterm">Midterm Exams</option>
+              <option value="final">Final Exams</option>
+              <option value="quiz">Quizzes</option>
+            </select>
+
+            <select
+              value={selectedExamId}
+              onChange={(e) => setSelectedExamId(e.target.value)}
+              className="text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 min-w-[200px]"
+            >
+              {exams.length === 0 ? (
+                <option value="">No exams created yet</option>
+              ) : (
+                exams
+                  .filter((e) => examTypeFilter === 'all' || e.exam_type === examTypeFilter)
+                  .map((e) => (
+                    <option key={e.id} value={e.id}>
+                      [{e.exam_type?.toUpperCase() || 'EXAM'}] {e.name} • Max: {e.max_marks}
+                    </option>
+                  ))
+              )}
+            </select>
+          </div>
         </div>
 
         {activeExam && (
           <div className="ml-auto text-xs bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg text-slate-600">
             <span className="font-semibold text-slate-800">{activeExam.name}</span>
             <span className="mx-2">•</span>
-            <span>Max Marks: <strong className="text-indigo-600">{activeExam.max_marks}</strong></span>
+            <span className="font-medium text-indigo-700 capitalize">Type: {activeExam.exam_type}</span>
             <span className="mx-2">•</span>
-            <span>Weightage: {activeExam.weightage}x</span>
+            <span>Max Marks: <strong className="text-indigo-600">{activeExam.max_marks}</strong></span>
           </div>
         )}
       </div>
@@ -534,16 +645,31 @@ export default function MarksEntry() {
           onSubmit={handleCreateExamSubmit}
           className="bg-indigo-50/60 border border-indigo-200 rounded-xl p-5 shadow-sm grid grid-cols-1 sm:grid-cols-6 gap-3"
         >
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-700">Exam Title</label>
+          <div className="sm:col-span-2">
+            <label className="block text-[11px] font-semibold text-slate-700">Exam Title (e.g. Unit Test 1)</label>
             <input
               type="text"
               required
-              placeholder="e.g. Midterm Test 1"
+              placeholder="e.g. Unit Test 1"
               value={newExam.name}
               onChange={(e) => setNewExam({ ...newExam, name: e.target.value })}
               className="mt-1 w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-700">Exam Type</label>
+            <select
+              value={newExam.exam_type}
+              onChange={(e) => setNewExam({ ...newExam, exam_type: e.target.value })}
+              className="mt-1 w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="unit_test">Unit Test</option>
+              <option value="midterm">Midterm Exam</option>
+              <option value="final">Final Exam</option>
+              <option value="quiz">Quiz</option>
+              <option value="assignment_test">Assignment Test</option>
+              <option value="exam">Standard Exam</option>
+            </select>
           </div>
           <div>
             <label className="block text-[11px] font-semibold text-slate-700">Max Marks</label>
@@ -577,7 +703,7 @@ export default function MarksEntry() {
               className="mt-1 w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
-          <div>
+          <div className="sm:col-span-2">
             <label className="block text-[11px] font-semibold text-slate-700">Time Slot</label>
             <input
               type="text"

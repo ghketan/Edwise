@@ -11,12 +11,17 @@ import {
   Clock,
   UserCheck,
   UserX,
+  Layers,
+  BookOpen,
 } from 'lucide-react';
 
 export default function AttendanceEntry() {
-  const { teacherProfile, teacherId, activeSession } = useAuth();
+  const { teacherProfile, teacherId, activeSession, isAdmin } = useAuth();
   const [scopes, setScopes] = useState([]);
-  const [selectedScope, setSelectedScope] = useState('');
+  const [classes, setClasses] = useState([]);
+  const [selectedClassId, setSelectedClassId] = useState('');
+  const [classSubjects, setClassSubjects] = useState([]);
+  const [selectedSubjectId, setSelectedSubjectId] = useState('all'); // 'all' or subject_id
   const [date, setDate] = useState(() => getLocalDateString());
   const [students, setStudents] = useState([]);
   const [entries, setEntries] = useState({}); // { [student_id]: status }
@@ -29,16 +34,42 @@ export default function AttendanceEntry() {
 
   const currentTeacherId = teacherId || teacherProfile?.id;
 
-  // Load teacher's authorized class-subject scopes (D-004)
+  // Load teacher scopes and classes
   useEffect(() => {
-    if (currentTeacherId) {
+    const sessionId = activeSession?.id;
+    if (isAdmin) {
       institutionApi
-        .getTeacherAssignments(currentTeacherId, activeSession?.id)
+        .getClasses(sessionId)
+        .then((clsList) => {
+          if (Array.isArray(clsList)) {
+            setClasses(clsList);
+            if (clsList.length > 0 && !selectedClassId) {
+              setSelectedClassId(String(clsList[0].id));
+            }
+          }
+        })
+        .catch((err) => console.error('Admin classes load error:', err));
+    } else if (currentTeacherId) {
+      institutionApi
+        .getTeacherAssignments(currentTeacherId, sessionId)
         .then((asgs) => {
           if (Array.isArray(asgs)) {
             setScopes(asgs);
-            if (asgs.length > 0) {
-              setSelectedScope(String(asgs[0].id));
+            // Unique classes from scopes
+            const uniqueClassesMap = {};
+            asgs.forEach((a) => {
+              if (!uniqueClassesMap[a.class_id]) {
+                uniqueClassesMap[a.class_id] = {
+                  id: a.class_id,
+                  name: `Class #${a.class_id}`,
+                  section_id: a.section_id,
+                };
+              }
+            });
+            const clsList = Object.values(uniqueClassesMap);
+            setClasses(clsList);
+            if (clsList.length > 0 && !selectedClassId) {
+              setSelectedClassId(String(clsList[0].id));
             }
           }
         })
@@ -46,29 +77,48 @@ export default function AttendanceEntry() {
           console.error('Failed to load teacher assignments:', err);
         });
     }
-  }, [currentTeacherId, activeSession]);
+  }, [currentTeacherId, activeSession, isAdmin]);
 
-  // When scope or date changes, load students and existing attendance records
+  // When class changes, fetch subjects configured for this class
   useEffect(() => {
-    if (!selectedScope) return;
-    const currentScope = scopes.find((s) => s.id === parseInt(selectedScope, 10));
-    if (!currentScope) return;
+    if (!selectedClassId) return;
+    institutionApi
+      .getClassSubjects(selectedClassId)
+      .then((subs) => {
+        setClassSubjects(Array.isArray(subs) ? subs : []);
+      })
+      .catch(() => {
+        // Fallback: filter from scopes
+        const scopeSubs = scopes
+          .filter((s) => String(s.class_id) === String(selectedClassId))
+          .map((s) => ({ id: s.subject_id, name: `Subject #${s.subject_id}`, code: `SUB${s.subject_id}` }));
+        setClassSubjects(scopeSubs);
+      });
+  }, [selectedClassId, scopes]);
+
+  // When class, subject, or date changes, load students and existing attendance records
+  useEffect(() => {
+    if (!selectedClassId) return;
 
     setLoading(true);
     setError('');
-    // Clear previous entries immediately to prevent cross-scope contamination
     setEntries({});
     setNotes({});
     setSaveStatus(null);
 
+    const isFullDay = selectedSubjectId === 'all';
+    const params = {
+      session_id: activeSession?.id || 1,
+      class_id: parseInt(selectedClassId, 10),
+      date: date,
+    };
+    if (!isFullDay && selectedSubjectId) {
+      params.subject_id = parseInt(selectedSubjectId, 10);
+    }
+
     Promise.all([
-      institutionApi.getStudents(currentScope.class_id, currentScope.section_id),
-      academicsApi.getAttendance({
-        session_id: currentScope.session_id,
-        class_id: currentScope.class_id,
-        subject_id: currentScope.subject_id,
-        date: date, // Correct parameter alias
-      }),
+      institutionApi.getStudents(selectedClassId),
+      academicsApi.getAttendance(params).catch(() => []),
     ])
       .then(([stuList, attList]) => {
         setStudents(stuList || []);
@@ -77,7 +127,10 @@ export default function AttendanceEntry() {
         let lastUpdated = null;
         if (Array.isArray(attList)) {
           attList.forEach((a) => {
-            map[a.student_id] = a.status;
+            // In full-day mode, if student is absent in any subject, reflect it
+            if (!map[a.student_id] || a.status === 'absent') {
+              map[a.student_id] = a.status;
+            }
             if (a.notes) noteMap[a.student_id] = a.notes;
             if (a.updated_at) lastUpdated = a.updated_at;
           });
@@ -85,7 +138,11 @@ export default function AttendanceEntry() {
         setEntries(map);
         setNotes(noteMap);
         setSaveStatus({
-          time: lastUpdated ? `Recorded ${formatUtcTimestamp(lastUpdated)}` : (attList?.length > 0 ? 'Previously Recorded' : null),
+          time: lastUpdated
+            ? `Recorded ${formatUtcTimestamp(lastUpdated)}`
+            : attList?.length > 0
+            ? 'Previously Recorded'
+            : null,
           count: attList?.length || 0,
           unsaved: false,
         });
@@ -94,7 +151,7 @@ export default function AttendanceEntry() {
         setError(extractApiError(err, 'Failed to load class attendance.'));
       })
       .finally(() => setLoading(false));
-  }, [selectedScope, date, scopes]);
+  }, [selectedClassId, selectedSubjectId, date, activeSession]);
 
   const handleStatusChange = (studentId, status) => {
     setEntries((prev) => ({ ...prev, [studentId]: status }));
@@ -111,8 +168,7 @@ export default function AttendanceEntry() {
   };
 
   const handleSave = async () => {
-    const currentScope = scopes.find((s) => s.id === parseInt(selectedScope, 10));
-    if (!currentScope) return;
+    if (!selectedClassId) return;
 
     setSaving(true);
     setError('');
@@ -133,13 +189,17 @@ export default function AttendanceEntry() {
     }
 
     try {
+      const isFullDay = selectedSubjectId === 'all';
+      const targetSubId = isFullDay ? null : parseInt(selectedSubjectId, 10);
+
       const res = await academicsApi.saveAttendance({
-        session_id: currentScope.session_id,
-        class_id: currentScope.class_id,
-        section_id: currentScope.section_id,
-        subject_id: currentScope.subject_id,
+        session_id: activeSession?.id || 1,
+        class_id: parseInt(selectedClassId, 10),
+        subject_id: targetSubId,
+        is_full_day: isFullDay,
         date: date,
-        records: entryList,
+        entries: entryList,
+        records: entryList, // sent for compatibility
       });
 
       setSaveStatus({
@@ -154,7 +214,7 @@ export default function AttendanceEntry() {
     }
   };
 
-  const currentScopeObj = scopes.find((s) => s.id === parseInt(selectedScope, 10));
+  const selectedSubjectObj = classSubjects.find((s) => String(s.id) === selectedSubjectId);
 
   return (
     <div className="space-y-6">
@@ -162,7 +222,7 @@ export default function AttendanceEntry() {
         <div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">Daily Attendance Entry</h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Server-scoped attendance sheet (API-001, R-004). Unmarked students remain unrecorded.
+            Mark full-day class attendance or select an individual subject to record subject-specific absence.
           </p>
         </div>
 
@@ -196,27 +256,48 @@ export default function AttendanceEntry() {
         </div>
       )}
 
-      {/* Class & Date Selector Header */}
+      {/* Class, Subject & Date Selector Header */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-4">
+          {/* 1. Class Option */}
           <div>
-            <label className="block text-[11px] font-semibold text-slate-500 uppercase">
-              Teaching Scope (D-004)
+            <label className="block text-[11px] font-semibold text-slate-500 uppercase flex items-center gap-1">
+              <Layers className="w-3.5 h-3.5 text-indigo-600" /> Class / Grade
             </label>
             <select
-              value={selectedScope}
-              onChange={(e) => setSelectedScope(e.target.value)}
+              value={selectedClassId}
+              onChange={(e) => setSelectedClassId(e.target.value)}
               className="mt-1 text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
-              {scopes.length === 0 && <option value="">No authorized scopes assigned</option>}
-              {scopes.map((s) => (
-                <option key={s.id} value={s.id}>
-                  Class #{s.class_id} {s.section_id ? `(Sec #${s.section_id})` : ''} • Subject #{s.subject_id}
+              {classes.length === 0 && <option value="">No classes available</option>}
+              {classes.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name || `Class #${c.id}`}
                 </option>
               ))}
             </select>
           </div>
 
+          {/* 2. Subject Option (All Subjects or Specific Subject) */}
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-500 uppercase flex items-center gap-1">
+              <BookOpen className="w-3.5 h-3.5 text-indigo-600" /> Subject Scope
+            </label>
+            <select
+              value={selectedSubjectId}
+              onChange={(e) => setSelectedSubjectId(e.target.value)}
+              className="mt-1 text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="all">★ All Subjects (Full Day Attendance)</option>
+              {classSubjects.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} ({s.code})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Date Picker */}
           <div>
             <label className="block text-[11px] font-semibold text-slate-500 uppercase">Date</label>
             <input
@@ -246,6 +327,24 @@ export default function AttendanceEntry() {
           >
             <UserX className="w-3.5 h-3.5" /> All Absent
           </button>
+        </div>
+      </div>
+
+      {/* Scope banner info */}
+      <div className="px-3.5 py-2 rounded-lg bg-indigo-50/70 border border-indigo-100 flex items-center justify-between text-xs text-indigo-900">
+        <div>
+          {selectedSubjectId === 'all' ? (
+            <span>
+              <strong>Full Day Attendance:</strong> Status entered will apply across all subjects for this class on {date}.
+            </span>
+          ) : (
+            <span>
+              <strong>Subject-Specific Attendance:</strong> Marking status specifically for <strong>{selectedSubjectObj?.name || 'Selected Subject'}</strong>. Other subjects remain unaffected.
+            </span>
+          )}
+        </div>
+        <div className="text-[11px] font-mono text-indigo-700">
+          Enrolled: {students.length} students
         </div>
       </div>
 

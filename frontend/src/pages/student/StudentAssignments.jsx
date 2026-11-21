@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { academicsApi } from '../../api/academics';
 import { extractApiError, formatUtcTimestamp } from '../../utils/format';
-import { BookOpen, Upload, CheckCircle, Clock, AlertCircle, Link2, ExternalLink } from 'lucide-react';
+import { BookOpen, Upload, CheckCircle, Clock, AlertCircle, Link2, ExternalLink, FileText, Image } from 'lucide-react';
 
 export default function StudentAssignments() {
   const { studentProfile, studentId, activeSession } = useAuth();
@@ -11,6 +11,8 @@ export default function StudentAssignments() {
   const [submissions, setSubmissions] = useState({}); // { [assign_id]: submission_obj }
   const [submitContent, setSubmitContent] = useState('');
   const [attachmentUrl, setAttachmentUrl] = useState('');
+  const [selectedFile, setSelectedFile] = useState(null);
+  const fileInputRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState({ text: '', type: '' });
@@ -63,8 +65,11 @@ export default function StudentAssignments() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!activeAssign) return;
-    if (!submitContent.trim() && !attachmentUrl.trim()) {
-      setMsg({ text: 'Please provide either a written solution or an attachment link.', type: 'error' });
+    if (!submitContent.trim() && !attachmentUrl.trim() && !selectedFile) {
+      setMsg({
+        text: 'Please provide a written solution, an attachment link, or upload your handwritten assignment file.',
+        type: 'error',
+      });
       return;
     }
 
@@ -72,15 +77,26 @@ export default function StudentAssignments() {
     setMsg({ text: '', type: '' });
 
     try {
-      const res = await academicsApi.submitAssignment(activeAssign.id, {
-        assignment_id: activeAssign.id,
-        content: submitContent.trim() || undefined,
-        attachment_url: attachmentUrl.trim() || undefined,
-      });
+      let res;
+      if (selectedFile) {
+        res = await academicsApi.uploadAssignmentSubmission(
+          activeAssign.id,
+          selectedFile,
+          submitContent.trim()
+        );
+      } else {
+        res = await academicsApi.submitAssignment(activeAssign.id, {
+          assignment_id: activeAssign.id,
+          content: submitContent.trim() || undefined,
+          attachment_url: attachmentUrl.trim() || undefined,
+        });
+      }
       setMsg({ text: 'Assignment submitted successfully!', type: 'success' });
       setSubmissions((prev) => ({ ...prev, [activeAssign.id]: res }));
       setSubmitContent('');
       setAttachmentUrl('');
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (err) {
       setMsg({ text: extractApiError(err, 'Failed to submit assignment.'), type: 'error' });
     } finally {
@@ -262,6 +278,28 @@ export default function StudentAssignments() {
                     />
                   </div>
 
+                  {/* Upload Handwritten File Option */}
+                  <div className="p-3.5 rounded-xl border border-dashed border-indigo-300 bg-indigo-50/40">
+                    <label className="block text-xs font-semibold text-slate-800 mb-1 flex items-center gap-1.5">
+                      <Upload className="w-4 h-4 text-indigo-600" /> Upload Handwritten Solution / Assignment File
+                    </label>
+                    <p className="text-[11px] text-slate-500 mb-2">
+                      Upload photos of handwritten pages, scanned work, PDF, or document (PNG, JPG, PDF, DOCX up to 10MB).
+                    </p>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".pdf,image/*,.doc,.docx,.txt"
+                      onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                      className="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer"
+                    />
+                    {selectedFile && (
+                      <div className="mt-2 text-xs font-medium text-emerald-700 flex items-center gap-1.5">
+                        <CheckCircle className="w-3.5 h-3.5" /> Selected: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)
+                      </div>
+                    )}
+                  </div>
+
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
                       Attachment Link / Project URL (Optional)
@@ -277,7 +315,7 @@ export default function StudentAssignments() {
                       />
                     </div>
                     <span className="text-[10px] text-slate-400">
-                      You can submit written text, an external solution link, or both.
+                      Submit handwritten photo/file upload, written text, or an external link.
                     </span>
                   </div>
 

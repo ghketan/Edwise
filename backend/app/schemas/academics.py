@@ -1,6 +1,6 @@
 from datetime import date, datetime
-from typing import List, Optional
-from pydantic import BaseModel, ConfigDict, field_validator
+from typing import Any, List, Optional
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 
 # Attendance
@@ -21,13 +21,29 @@ class AttendanceEntry(BaseModel):
 class AttendanceBulkSave(BaseModel):
     """
     Contract API-001: Teacher saves attendance for one class, section, subject, and date.
+    Supports single subject or full-day (all subjects) recording.
     """
     session_id: int
     class_id: int
     section_id: Optional[int] = None
-    subject_id: int
+    subject_id: Optional[int] = None
+    is_full_day: bool = False
     date: date
-    entries: List[AttendanceEntry]
+    entries: Optional[List[AttendanceEntry]] = None
+    records: Optional[List[AttendanceEntry]] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def unify_entries(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if not data.get("entries") and data.get("records"):
+                data["entries"] = data["records"]
+            if data.get("subject_id") in ("all", "", 0):
+                data["subject_id"] = None
+                data["is_full_day"] = True
+            elif data.get("subject_id") is None:
+                data["is_full_day"] = True
+        return data
 
 
 class AttendanceRecordResponse(BaseModel):

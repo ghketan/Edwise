@@ -4,8 +4,10 @@ import { useAuth } from '../context/AuthContext';
 
 export default function ProtectedRoute({ allowedRoles }) {
   const { user, token, loading } = useAuth();
+  const currentToken = token || localStorage.getItem('access_token') || sessionStorage.getItem('access_token');
+  const currentUser = user || (sessionStorage.getItem('edwise_user') ? JSON.parse(sessionStorage.getItem('edwise_user')) : null);
 
-  if (loading) {
+  if (loading && !currentToken) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="flex flex-col items-center gap-2">
@@ -16,15 +18,15 @@ export default function ProtectedRoute({ allowedRoles }) {
     );
   }
 
-  if (!token || !user) {
+  if (!currentToken || !currentUser) {
     return <Navigate to="/login" replace />;
   }
 
-  if (allowedRoles && !allowedRoles.includes(user.role)) {
+  if (allowedRoles && !allowedRoles.includes(currentUser.role)) {
     // Redirect to respective home
-    if (user.role === 'ADMINISTRATOR') return <Navigate to="/admin" replace />;
-    if (user.role === 'TEACHER') return <Navigate to="/teacher" replace />;
-    if (user.role === 'STUDENT') return <Navigate to="/student" replace />;
+    if (currentUser.role === 'ADMINISTRATOR') return <Navigate to="/admin" replace />;
+    if (currentUser.role === 'TEACHER') return <Navigate to="/teacher" replace />;
+    if (currentUser.role === 'STUDENT') return <Navigate to="/student" replace />;
     return <Navigate to="/login" replace />;
   }
 

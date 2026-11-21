@@ -3,12 +3,15 @@ import { useAuth } from '../../context/AuthContext';
 import { institutionApi } from '../../api/institution';
 import { academicsApi } from '../../api/academics';
 import { extractApiError, getLocalDateTimeInput, formatUtcTimestamp } from '../../utils/format';
-import { BookOpen, Plus, CheckCircle, Clock, AlertCircle, Link2, ExternalLink } from 'lucide-react';
+import { BookOpen, Plus, CheckCircle, Clock, AlertCircle, Link2, ExternalLink, FileText } from 'lucide-react';
 
 export default function TeacherAssignments() {
-  const { teacherProfile, teacherId, activeSession } = useAuth();
+  const { teacherProfile, teacherId, activeSession, isAdmin } = useAuth();
   const [scopes, setScopes] = useState([]);
-  const [selectedScope, setSelectedScope] = useState('');
+  const [classes, setClasses] = useState([]);
+  const [selectedClassId, setSelectedClassId] = useState('');
+  const [classSubjects, setClassSubjects] = useState([]);
+  const [selectedSubjectId, setSelectedSubjectId] = useState('');
   const [assignments, setAssignments] = useState([]);
   const [selectedAssignment, setSelectedAssignment] = useState(null);
   const [submissions, setSubmissions] = useState([]);
@@ -32,44 +35,121 @@ export default function TeacherAssignments() {
   const [msg, setMsg] = useState({ text: '', type: '' });
 
   const currentTeacherId = teacherId || teacherProfile?.id;
+  const sessionId = activeSession?.id;
 
+  // 1. Load classes & scopes
   useEffect(() => {
-    if (currentTeacherId) {
+    let cancelled = false;
+    if (isAdmin) {
       institutionApi
-        .getTeacherAssignments(currentTeacherId, activeSession?.id)
+        .getClasses(sessionId)
+        .then((clsList) => {
+          if (!cancelled && Array.isArray(clsList)) {
+            setClasses(clsList);
+            if (clsList.length > 0 && !selectedClassId) {
+              setSelectedClassId(String(clsList[0].id));
+            }
+          }
+        })
+        .catch((err) => console.error('Admin classes load error:', err));
+    } else if (currentTeacherId && sessionId) {
+      institutionApi
+        .getTeacherAssignments(currentTeacherId, sessionId)
         .then((asgs) => {
-          if (Array.isArray(asgs)) {
+          if (!cancelled && Array.isArray(asgs)) {
             setScopes(asgs);
-            if (asgs.length > 0) setSelectedScope(String(asgs[0].id));
+            const uniqueClassesMap = {};
+            asgs.forEach((a) => {
+              if (!uniqueClassesMap[a.class_id]) {
+                uniqueClassesMap[a.class_id] = {
+                  id: a.class_id,
+                  name: `Class #${a.class_id}`,
+                  section_id: a.section_id,
+                };
+              }
+            });
+            const clsList = Object.values(uniqueClassesMap);
+            setClasses(clsList);
+            if (clsList.length > 0 && !selectedClassId) {
+              setSelectedClassId(String(clsList[0].id));
+            }
           }
         })
         .catch((err) => {
           console.error('Failed to load teacher assignments:', err);
         });
     }
-  }, [currentTeacherId, activeSession]);
+    return () => {
+      cancelled = true;
+    };
+  }, [currentTeacherId, sessionId, isAdmin]);
 
+  // 2. Load subjects and students for selected class
   useEffect(() => {
-    if (!selectedScope) return;
-    const currentScope = scopes.find((s) => s.id === parseInt(selectedScope, 10));
-    if (!currentScope) return;
+    if (!selectedClassId) return;
+    let cancelled = false;
 
-    setLoading(true);
-    // Load enrolled students for this class/section to map student names
+    // Load enrolled students
     institutionApi
-      .getStudents(currentScope.class_id, currentScope.section_id)
+      .getStudents(selectedClassId)
       .then((stuList) => {
-        setStudents(stuList || []);
+        if (!cancelled) setStudents(Array.isArray(stuList) ? stuList : []);
       })
-      .catch(() => setStudents([]));
+      .catch(() => {
+        if (!cancelled) setStudents([]);
+      });
+
+    // Load class subjects
+    institutionApi
+      .getClassSubjects(selectedClassId)
+      .then((subs) => {
+        if (!cancelled) {
+          const list = Array.isArray(subs) ? subs : [];
+          setClassSubjects(list);
+          if (list.length > 0) {
+            setSelectedSubjectId((prev) =>
+              list.some((s) => String(s.id) === String(prev)) ? prev : String(list[0].id)
+            );
+          } else {
+            setSelectedSubjectId('');
+          }
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          const fallbackSubs = scopes
+            .filter((s) => String(s.class_id) === String(selectedClassId))
+            .map((s) => ({ id: s.subject_id, name: `Subject #${s.subject_id}`, code: `SUB${s.subject_id}` }));
+          setClassSubjects(fallbackSubs);
+          if (fallbackSubs.length > 0) {
+            setSelectedSubjectId(String(fallbackSubs[0].id));
+          }
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedClassId, scopes]);
+
+  // 3. Load assignments for selected class and subject
+  useEffect(() => {
+    if (!selectedClassId) return;
+    let cancelled = false;
+    setLoading(true);
+
+    const params = {
+      session_id: sessionId || 1,
+      class_id: parseInt(selectedClassId, 10),
+    };
+    if (selectedSubjectId) {
+      params.subject_id = parseInt(selectedSubjectId, 10);
+    }
 
     academicsApi
-      .getAssignments({
-        session_id: currentScope.session_id,
-        class_id: currentScope.class_id,
-        subject_id: currentScope.subject_id,
-      })
+      .getAssignments(params)
       .then((list) => {
+        if (cancelled) return;
         const asgList = Array.isArray(list) ? list : [];
         setAssignments(asgList);
         if (asgList.length > 0) {
@@ -80,10 +160,18 @@ export default function TeacherAssignments() {
         }
       })
       .catch((err) => {
-        setMsg({ text: extractApiError(err, 'Failed to load assignments.'), type: 'error' });
+        if (!cancelled) {
+          setMsg({ text: extractApiError(err, 'Failed to load assignments.'), type: 'error' });
+        }
       })
-      .finally(() => setLoading(false));
-  }, [selectedScope, scopes]);
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedClassId, selectedSubjectId, sessionId]);
 
   const handleSelectAssignment = async (assign) => {
     setSelectedAssignment(assign);
@@ -98,15 +186,16 @@ export default function TeacherAssignments() {
 
   const handleCreateAssignment = async (e) => {
     e.preventDefault();
-    const currentScope = scopes.find((s) => s.id === parseInt(selectedScope, 10));
-    if (!currentScope) return;
+    if (!selectedClassId || !selectedSubjectId) {
+      setMsg({ text: 'Please select both a class and a subject before creating an assignment.', type: 'error' });
+      return;
+    }
 
     try {
       const created = await academicsApi.createAssignment({
-        session_id: currentScope.session_id,
-        class_id: currentScope.class_id,
-        section_id: currentScope.section_id,
-        subject_id: currentScope.subject_id,
+        session_id: sessionId || 1,
+        class_id: parseInt(selectedClassId, 10),
+        subject_id: parseInt(selectedSubjectId, 10),
         title: newAssign.title.trim(),
         description: newAssign.description.trim() || null,
         max_points: parseFloat(newAssign.max_points),
@@ -189,23 +278,55 @@ export default function TeacherAssignments() {
         </div>
       )}
 
-      {/* Scope Selector */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex items-center gap-3">
-        <label className="text-[11px] font-semibold text-slate-500 uppercase">
-          Teaching Scope (D-004)
-        </label>
-        <select
-          value={selectedScope}
-          onChange={(e) => setSelectedScope(e.target.value)}
-          className="text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        >
-          {scopes.length === 0 && <option value="">No authorized scopes assigned</option>}
-          {scopes.map((s) => (
-            <option key={s.id} value={s.id}>
-              Class #{s.class_id} {s.section_id ? `(Sec #${s.section_id})` : ''} • Subject #{s.subject_id}
-            </option>
-          ))}
-        </select>
+      {/* Class & Subject Filter Controls */}
+      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-wrap items-center gap-4">
+        {/* 1. Class Option */}
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-500 uppercase">
+            1. Select Class
+          </label>
+          <select
+            value={selectedClassId}
+            onChange={(e) => setSelectedClassId(e.target.value)}
+            className="mt-1 text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            {classes.length === 0 && <option value="">No classes available</option>}
+            {classes.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name || `Class #${c.id}`}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* 2. Subject Option */}
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-500 uppercase">
+            2. Select Subject
+          </label>
+          <select
+            value={selectedSubjectId}
+            onChange={(e) => setSelectedSubjectId(e.target.value)}
+            className="mt-1 text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            {classSubjects.length === 0 && <option value="">No subjects in class</option>}
+            {classSubjects.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name} ({s.code})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {selectedAssignment && (
+          <div className="ml-auto text-xs bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg text-slate-600">
+            <span className="font-semibold text-slate-800">{selectedAssignment.title}</span>
+            <span className="mx-2">•</span>
+            <span>Max: {selectedAssignment.max_points} pts</span>
+            <span className="mx-2">•</span>
+            <span className="text-indigo-600 font-semibold">{submissions.length} Submissions</span>
+          </div>
+        )}
       </div>
 
       {/* Create Assignment Modal / Form */}
@@ -328,6 +449,7 @@ export default function TeacherAssignments() {
                     <tr>
                       <th className="py-2 px-3 font-semibold">Student</th>
                       <th className="py-2 px-3 font-semibold">Submitted At</th>
+                      <th className="py-2 px-3 font-semibold">Student Response</th>
                       <th className="py-2 px-3 font-semibold">Status</th>
                       <th className="py-2 px-3 font-semibold">Grade</th>
                       <th className="py-2 px-3 font-semibold">Feedback</th>
@@ -337,7 +459,7 @@ export default function TeacherAssignments() {
                   <tbody className="divide-y divide-slate-100 text-slate-700">
                     {submissions.length === 0 ? (
                       <tr>
-                        <td colSpan="6" className="py-6 text-center text-slate-400">
+                        <td colSpan="7" className="py-6 text-center text-slate-400">
                           No student submissions received for this assignment yet.
                         </td>
                       </tr>
@@ -353,6 +475,24 @@ export default function TeacherAssignments() {
                             </td>
                             <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500">
                               {formatUtcTimestamp(sub.submitted_at)}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              {sub.attachment_url ? (
+                                <a
+                                  href={sub.attachment_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 font-semibold text-indigo-600 hover:text-indigo-800 underline text-[11px]"
+                                >
+                                  <FileText className="w-3.5 h-3.5" /> View File
+                                </a>
+                              ) : sub.content ? (
+                                <span className="font-mono text-slate-600 text-[11px] truncate max-w-[140px] inline-block">
+                                  {sub.content}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 italic">None</span>
+                              )}
                             </td>
                             <td className="py-2.5 px-3">
                               <span
@@ -383,7 +523,7 @@ export default function TeacherAssignments() {
                                 }}
                                 className="text-xs font-semibold text-indigo-600 hover:text-indigo-800"
                               >
-                                {sub.status === 'graded' ? 'Regrade' : 'Grade'}
+                                {sub.status === 'graded' ? 'Regrade' : 'Evaluate'}
                               </button>
                             </td>
                           </tr>
@@ -398,31 +538,35 @@ export default function TeacherAssignments() {
               {gradingSubId && (
                 <div className="mt-4 p-4 rounded-xl border border-indigo-200 bg-indigo-50/60">
                   <h3 className="font-semibold text-xs text-indigo-900 mb-2">
-                    Grading Submission #{gradingSubId} (Max: {selectedAssignment.max_points} pts)
+                    Manual Evaluation: Submission #{gradingSubId} (Max: {selectedAssignment.max_points} pts)
                   </h3>
 
                   {(() => {
                     const activeSub = submissions.find((s) => s.id === gradingSubId);
                     if (!activeSub) return null;
                     return (
-                      <div className="mb-3 p-3 bg-white rounded-lg border border-indigo-100 text-xs space-y-1.5">
-                        <div className="font-semibold text-slate-800 text-[11px] uppercase tracking-wider">Submitted Work:</div>
+                      <div className="mb-3 p-3 bg-white rounded-lg border border-indigo-100 text-xs space-y-2">
+                        <div className="font-semibold text-slate-800 text-[11px] uppercase tracking-wider">
+                          Student Submitted Response:
+                        </div>
                         {activeSub.content && (
-                          <p className="font-mono text-slate-700 whitespace-pre-wrap bg-slate-50 p-2.5 rounded border border-slate-200">
+                          <p className="font-mono text-slate-700 whitespace-pre-wrap bg-slate-50 p-2.5 rounded border border-slate-200 text-xs">
                             {activeSub.content}
                           </p>
                         )}
                         {activeSub.attachment_url && (
-                          <div className="flex items-center gap-1.5 text-indigo-700 font-medium pt-1">
-                            <Link2 className="w-3.5 h-3.5" />
-                            <span>Attachment Link: </span>
+                          <div className="flex items-center justify-between p-2.5 bg-indigo-50 rounded-lg border border-indigo-200">
+                            <div className="flex items-center gap-2 text-indigo-800 font-semibold text-xs">
+                              <FileText className="w-4 h-4 text-indigo-600" />
+                              <span>Handwritten File / Attachment</span>
+                            </div>
                             <a
                               href={activeSub.attachment_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-indigo-600 underline font-mono inline-flex items-center gap-1"
+                              className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-lg inline-flex items-center gap-1 shadow-sm"
                             >
-                              {activeSub.attachment_url} <ExternalLink className="w-3 h-3" />
+                              Open Handwritten Work <ExternalLink className="w-3 h-3" />
                             </a>
                           </div>
                         )}

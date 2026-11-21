@@ -1,5 +1,10 @@
+from datetime import datetime, timezone
+import os
+import re
 from typing import List, Optional
-from fastapi import APIRouter, Depends
+import uuid
+from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from backend.app.api.deps import (
     check_teacher_class_scope,
@@ -9,6 +14,7 @@ from backend.app.api.deps import (
     require_student,
     require_teacher_or_admin,
 )
+from backend.app.core.config import settings
 from backend.app.core.exceptions import ForbiddenError, NotFoundError, ValidationError
 from backend.app.models.academics import Assignment, Submission
 from backend.app.models.institution import ClassSubjectTeacher, Enrollment, Student
@@ -167,6 +173,90 @@ def api_submit_assignment(
         student_id=student.id,
         user_id=current_user.id
     )
+
+
+ALLOWED_SUBMISSION_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".doc", ".docx", ".txt"}
+
+
+@router.post("/{assignment_id}/submit-file", response_model=SubmissionResponse)
+def api_submit_assignment_file(
+    assignment_id: int,
+    file: UploadFile = File(...),
+    content: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_student)
+):
+    """
+    Student submits an assignment with an uploaded file (e.g. photo of handwritten work, PDF, document).
+    """
+    if not current_user.student_profile:
+        raise ForbiddenError("User is not associated with a student record")
+
+    assignment = db.query(Assignment).filter(Assignment.id == assignment_id).first()
+    if not assignment:
+        raise NotFoundError("Assignment not found")
+
+    student = current_user.student_profile
+    enr = db.query(Enrollment).filter(
+        Enrollment.student_id == student.id,
+        Enrollment.session_id == assignment.session_id,
+        Enrollment.class_id == assignment.class_id
+    ).first()
+    if not enr and student.class_id != assignment.class_id:
+        raise ForbiddenError("Student is not enrolled in the class for this assignment")
+
+    raw_name = os.path.basename(file.filename or "submission")
+    _, ext = os.path.splitext(raw_name)
+    if not ext or ext.lower() not in ALLOWED_SUBMISSION_EXTENSIONS:
+        raise ValidationError(
+            f"Invalid file extension '{ext or 'none'}'. Allowed extensions: {sorted(ALLOWED_SUBMISSION_EXTENSIONS)}"
+        )
+
+    file_bytes = file.file.read()
+    if not file_bytes:
+        raise ValidationError("Uploaded assignment file is empty")
+
+    upload_dir = os.path.join(settings.BASE_DIR, "uploads", "assignments")
+    os.makedirs(upload_dir, exist_ok=True)
+    safe_base = re.sub(r"[^a-zA-Z0-9._-]", "_", raw_name)
+    while ".." in safe_base:
+        safe_base = safe_base.replace("..", "_")
+
+    filename = f"{int(datetime.now(timezone.utc).timestamp())}_{uuid.uuid4().hex[:8]}_{safe_base}"
+    file_path = os.path.join(upload_dir, filename)
+
+    with open(file_path, "wb") as buffer:
+        buffer.write(file_bytes)
+
+    attachment_url = f"/api/v1/assignments/files/{filename}"
+    submission_in = SubmissionCreate(
+        assignment_id=assignment_id,
+        content=content or None,
+        attachment_url=attachment_url
+    )
+
+    return submit_assignment(
+        db=db,
+        submission_in=submission_in,
+        student_id=student.id,
+        user_id=current_user.id
+    )
+
+
+@router.get("/files/{filename}")
+def api_get_assignment_file(
+    filename: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Securely serves uploaded assignment submission files.
+    """
+    safe_filename = os.path.basename(filename)
+    file_path = os.path.join(settings.BASE_DIR, "uploads", "assignments", safe_filename)
+    if not os.path.isfile(file_path):
+        raise NotFoundError("Submission file not found")
+
+    return FileResponse(file_path, filename=safe_filename)
 
 
 @router.put("/submissions/{submission_id}/grade", response_model=SubmissionResponse)

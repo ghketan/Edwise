@@ -12,6 +12,7 @@ import AttendanceGoalCard from '../../components/student/AttendanceGoalCard';
 import AchievementBadgesCard from '../../components/student/AchievementBadgesCard';
 import StudentDoubtBox from '../../components/student/StudentDoubtBox';
 import WhatIfSimulatorCard from '../../components/student/WhatIfSimulatorCard';
+import SubjectPerformanceDiagnostic from '../../components/student/SubjectPerformanceDiagnostic';
 import { extractApiError, formatDateOnly } from '../../utils/format';
 import {
   CalendarCheck,
@@ -26,6 +27,7 @@ export default function StudentDashboard() {
   const [subjects, setSubjects] = useState([]);
   const [attendance, setAttendance] = useState(null);
   const [assignments, setAssignments] = useState([]);
+  const [submissions, setSubmissions] = useState({});
   const [announcements, setAnnouncements] = useState([]);
   const [doubts, setDoubts] = useState([]);
   const [attendanceGoal, setAttendanceGoal] = useState(null);
@@ -81,6 +83,24 @@ export default function StudentDashboard() {
       setDoubts(Array.isArray(doubtList) ? doubtList : []);
       setAttendanceGoal(goalRes || null);
       setBadgeData(badgesRes || null);
+
+      if (Array.isArray(assignList) && assignList.length > 0) {
+        const subMap = {};
+        await Promise.all(
+          assignList.map(async (a) => {
+            try {
+              const subs = await academicsApi.getSubmissions(a.id);
+              if (Array.isArray(subs) && subs.length > 0) {
+                const mine = subs.find((s) => s.student_id === currentStudentId) || subs[0];
+                if (mine) subMap[a.id] = mine;
+              }
+            } catch {
+              // Ignore
+            }
+          })
+        );
+        setSubmissions(subMap);
+      }
 
       if (Array.isArray(attList)) {
         const total = attList.length;
@@ -209,6 +229,16 @@ export default function StudentDashboard() {
           color="sky"
         />
       </div>
+
+      {/* Subject-Wise Performance & Failure Risk Diagnostic */}
+      <SubjectPerformanceDiagnostic
+        subjects={subjects}
+        marks={marks}
+        exams={exams}
+        attendanceRecords={attendance?.records || []}
+        assignments={assignments}
+        submissions={submissions}
+      />
 
       {/* Upcoming Exams & Notice Board */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 min-w-0">

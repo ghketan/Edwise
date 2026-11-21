@@ -22,6 +22,7 @@ from backend.app.models.audit import AuditLog
 from backend.app.models.institution import (
     AcademicSession,
     Class,
+    ClassSubject,
     ClassSubjectTeacher,
     Enrollment,
     Section,
@@ -113,6 +114,16 @@ def seed_database():
                 db.add(sub)
                 db.flush()
             created_subjects[code] = sub
+
+            # Link subject to Class 10
+            cs_link = db.query(ClassSubject).filter(
+                ClassSubject.class_id == class_10.id,
+                ClassSubject.subject_id == sub.id
+            ).first()
+            if not cs_link:
+                cs_link = ClassSubject(class_id=class_10.id, subject_id=sub.id)
+                db.add(cs_link)
+        db.flush()
 
         # 5. Teachers & User Accounts
         # Teacher 1: Sarah

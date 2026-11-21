@@ -177,6 +177,15 @@ export const academicsApi = {
     const res = await api.post(`/assignments/${assignmentId}/submit`, payload);
     return res.data;
   },
+  uploadAssignmentSubmission: async (assignmentId, file, content = '') => {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (content) formData.append('content', content);
+    const res = await api.post(`/assignments/${assignmentId}/submit-file`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data;
+  },
   getSubmissions: async (assignmentId) => {
     const res = await api.get(`/assignments/${assignmentId}/submissions`);
     return res.data;

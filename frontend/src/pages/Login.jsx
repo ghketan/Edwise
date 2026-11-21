@@ -33,41 +33,30 @@ export default function Login() {
 
   // If already logged in, redirect
   useEffect(() => {
-    if (user) {
-      if (user.role === 'ADMINISTRATOR') navigate('/admin');
-      else if (user.role === 'TEACHER') navigate('/teacher');
-      else if (user.role === 'STUDENT') navigate('/student');
+    if (user && user.role) {
+      if (user.role === 'ADMINISTRATOR') navigate('/admin', { replace: true });
+      else if (user.role === 'TEACHER') navigate('/teacher', { replace: true });
+      else if (user.role === 'STUDENT') navigate('/student', { replace: true });
     }
   }, [user, navigate]);
-
-  // Attempt to load classes if token exists or fail gracefully
-  useEffect(() => {
-    const token = localStorage.getItem('access_token') || sessionStorage.getItem('access_token');
-    if (token) {
-      institutionApi
-        .getClasses()
-        .then((data) => {
-          if (Array.isArray(data) && data.length > 0) {
-            setClasses(data);
-            setClassId(String(data[0].id));
-          }
-        })
-        .catch(() => {
-          // Unauthenticated or error - safe fallback
-        });
-    }
-  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      await login(username, password);
-      // AuthContext and useEffect will redirect based on role
+      const res = await login(username, password);
+      if (res?.role === 'ADMINISTRATOR') {
+        navigate('/admin', { replace: true });
+      } else if (res?.role === 'TEACHER') {
+        navigate('/teacher', { replace: true });
+      } else if (res?.role === 'STUDENT') {
+        navigate('/student', { replace: true });
+      } else {
+        navigate('/', { replace: true });
+      }
     } catch (err) {
       setError(extractApiError(err, 'Invalid username or password.'));
-    } finally {
       setLoading(false);
     }
   };

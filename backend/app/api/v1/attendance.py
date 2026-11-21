@@ -38,14 +38,23 @@ def api_save_attendance(
     Contract API-001: Teacher saves attendance for one class, section, subject, and date.
     Enforces object-level scoping and writes audit log in the same transaction.
     """
-    check_teacher_scope(
-        db=db,
-        user=current_user,
-        class_id=attendance_in.class_id,
-        subject_id=attendance_in.subject_id,
-        session_id=attendance_in.session_id,
-        section_id=attendance_in.section_id
-    )
+    if attendance_in.subject_id:
+        check_teacher_scope(
+            db=db,
+            user=current_user,
+            class_id=attendance_in.class_id,
+            subject_id=attendance_in.subject_id,
+            session_id=attendance_in.session_id,
+            section_id=attendance_in.section_id
+        )
+    else:
+        check_teacher_class_scope(
+            db=db,
+            user=current_user,
+            class_id=attendance_in.class_id,
+            session_id=attendance_in.session_id,
+            section_id=attendance_in.section_id
+        )
 
     teacher_id = current_user.teacher_profile.id if current_user.teacher_profile else None
     count = save_attendance(

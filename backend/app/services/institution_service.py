@@ -5,6 +5,7 @@ from backend.app.core.security import get_password_hash
 from backend.app.models.institution import (
     AcademicSession,
     Class,
+    ClassSubject,
     ClassSubjectTeacher,
     Enrollment,
     Section,
@@ -73,9 +74,17 @@ def create_class(db: Session, class_in: ClassCreate, user_id: Optional[int] = No
     if existing:
         raise ConflictError(f"Class '{class_in.name}' already exists in this session")
 
-    new_class = Class(**class_in.model_dump())
+    data = class_in.model_dump(exclude={"subject_ids"})
+    new_class = Class(**data)
     db.add(new_class)
     db.flush()
+
+    # Link initial subjects if provided
+    if class_in.subject_ids:
+        for sub_id in class_in.subject_ids:
+            cs = ClassSubject(class_id=new_class.id, subject_id=sub_id)
+            db.add(cs)
+        db.flush()
 
     create_audit_entry(
         db=db,
@@ -89,6 +98,107 @@ def create_class(db: Session, class_in: ClassCreate, user_id: Optional[int] = No
     db.commit()
     db.refresh(new_class)
     return new_class
+
+
+def get_class_subjects(db: Session, class_id: int) -> List[Subject]:
+    """
+    Get subjects configured for this class/grade.
+    If no explicit ClassSubject links exist, falls back to subjects taught in this class
+    via ClassSubjectTeacher, and then to all subjects for backward compatibility.
+    """
+    explicit = (
+        db.query(Subject)
+        .join(ClassSubject, ClassSubject.subject_id == Subject.id)
+        .filter(ClassSubject.class_id == class_id)
+        .all()
+    )
+    if explicit:
+        return explicit
+
+    via_teacher = (
+        db.query(Subject)
+        .join(ClassSubjectTeacher, ClassSubjectTeacher.subject_id == Subject.id)
+        .filter(ClassSubjectTeacher.class_id == class_id)
+        .distinct()
+        .all()
+    )
+    if via_teacher:
+        return via_teacher
+
+    return db.query(Subject).all()
+
+
+def assign_subject_to_class(
+    db: Session,
+    class_id: int,
+    subject_id: Optional[int] = None,
+    subject_data: Optional[dict] = None,
+    user_id: Optional[int] = None
+) -> Subject:
+    target_class = db.query(Class).filter(Class.id == class_id).first()
+    if not target_class:
+        raise NotFoundError("Class not found")
+
+    if subject_id:
+        sub = db.query(Subject).filter(Subject.id == subject_id).first()
+        if not sub:
+            raise NotFoundError("Subject not found")
+    elif subject_data:
+        existing = db.query(Subject).filter(Subject.code == subject_data.get("code")).first()
+        if existing:
+            sub = existing
+        else:
+            sub = Subject(
+                name=subject_data["name"],
+                code=subject_data["code"].upper(),
+                description=subject_data.get("description")
+            )
+            db.add(sub)
+            db.flush()
+    else:
+        raise ValidationError("Either subject_id or subject details must be provided")
+
+    link = db.query(ClassSubject).filter(
+        ClassSubject.class_id == class_id,
+        ClassSubject.subject_id == sub.id
+    ).first()
+    if not link:
+        link = ClassSubject(class_id=class_id, subject_id=sub.id)
+        db.add(link)
+        db.flush()
+
+    create_audit_entry(
+        db=db,
+        user_id=user_id,
+        action="class_subject.assigned",
+        entity_name="class_subject",
+        entity_id=link.id,
+        new_values={"class_id": class_id, "subject_id": sub.id, "subject_name": sub.name},
+        reason="Assigned subject to class"
+    )
+    db.commit()
+    db.refresh(sub)
+    return sub
+
+
+def remove_subject_from_class(db: Session, class_id: int, subject_id: int, user_id: Optional[int] = None):
+    link = db.query(ClassSubject).filter(
+        ClassSubject.class_id == class_id,
+        ClassSubject.subject_id == subject_id
+    ).first()
+    if link:
+        db.delete(link)
+        create_audit_entry(
+            db=db,
+            user_id=user_id,
+            action="class_subject.removed",
+            entity_name="class_subject",
+            entity_id=link.id,
+            old_values={"class_id": class_id, "subject_id": subject_id},
+            reason="Removed subject from class"
+        )
+        db.commit()
+    return {"status": "success", "message": "Subject removed from class"}
 
 
 def get_classes(db: Session, session_id: Optional[int] = None) -> List[Class]:

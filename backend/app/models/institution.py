@@ -66,6 +66,25 @@ class Subject(Base, TimestampMixin):
     doubts = relationship("DoubtQuestion", back_populates="subject")
 
 
+class ClassSubject(Base, TimestampMixin):
+    """
+    Associates subjects directly with a class/grade.
+    Allows independent subject configuration per grade.
+    """
+    __tablename__ = "class_subjects"
+
+    id = Column(Integer, primary_key=True, index=True)
+    class_id = Column(Integer, ForeignKey("classes.id", ondelete="CASCADE"), nullable=False)
+    subject_id = Column(Integer, ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False)
+
+    class_obj = relationship("Class", backref="class_subject_associations")
+    subject = relationship("Subject", backref="class_associations")
+
+    __table_args__ = (
+        UniqueConstraint("class_id", "subject_id", name="uq_class_subject"),
+    )
+
+
 class Teacher(Base, TimestampMixin):
     __tablename__ = "teachers"
 

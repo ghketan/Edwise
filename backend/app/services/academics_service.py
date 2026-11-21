@@ -74,61 +74,77 @@ def save_attendance(
                     f"Student {entry.student_id} is not actively enrolled in class {attendance_in.class_id}"
                 )
 
-    saved_count = 0
-    for entry in attendance_in.entries:
-        existing = db.query(AttendanceRecord).filter(
-            AttendanceRecord.student_id == entry.student_id,
-            AttendanceRecord.session_id == attendance_in.session_id,
-            AttendanceRecord.subject_id == attendance_in.subject_id,
-            AttendanceRecord.date == attendance_in.date
-        ).first()
+    # Determine target subjects (either specified subject or all subjects of class for full day)
+    target_subject_ids = []
+    if attendance_in.subject_id:
+        target_subject_ids = [attendance_in.subject_id]
+    else:
+        from backend.app.services.institution_service import get_class_subjects
+        subs = get_class_subjects(db, attendance_in.class_id)
+        if subs:
+            target_subject_ids = [s.id for s in subs]
+        else:
+            cst_subs = db.query(ClassSubjectTeacher.subject_id).filter(
+                ClassSubjectTeacher.class_id == attendance_in.class_id
+            ).distinct().all()
+            target_subject_ids = [s[0] for s in cst_subs] if cst_subs else [1]
 
-        if existing:
-            if existing.status != entry.status or existing.notes != entry.notes or existing.class_id != attendance_in.class_id:
-                old_val = {"status": existing.status, "notes": existing.notes}
-                existing.status = entry.status
-                existing.notes = entry.notes
-                existing.class_id = attendance_in.class_id
-                existing.section_id = attendance_in.section_id
-                existing.recorded_by = recorded_by_teacher_id
+    saved_count = 0
+    for target_sub_id in target_subject_ids:
+        for entry in attendance_in.entries:
+            existing = db.query(AttendanceRecord).filter(
+                AttendanceRecord.student_id == entry.student_id,
+                AttendanceRecord.session_id == attendance_in.session_id,
+                AttendanceRecord.subject_id == target_sub_id,
+                AttendanceRecord.date == attendance_in.date
+            ).first()
+
+            if existing:
+                if existing.status != entry.status or existing.notes != entry.notes or existing.class_id != attendance_in.class_id:
+                    old_val = {"status": existing.status, "notes": existing.notes}
+                    existing.status = entry.status
+                    existing.notes = entry.notes
+                    existing.class_id = attendance_in.class_id
+                    existing.section_id = attendance_in.section_id
+                    existing.recorded_by = recorded_by_teacher_id
+                    db.flush()
+
+                    create_audit_entry(
+                        db=db,
+                        user_id=user_id,
+                        action="attendance.changed",
+                        entity_name="attendance",
+                        entity_id=existing.id,
+                        old_values=old_val,
+                        new_values={"status": entry.status, "notes": entry.notes},
+                        reason="Teacher updated attendance record"
+                    )
+                saved_count += 1
+            else:
+                new_rec = AttendanceRecord(
+                    session_id=attendance_in.session_id,
+                    class_id=attendance_in.class_id,
+                    section_id=attendance_in.section_id,
+                    subject_id=target_sub_id,
+                    student_id=entry.student_id,
+                    date=attendance_in.date,
+                    status=entry.status,
+                    recorded_by=recorded_by_teacher_id,
+                    notes=entry.notes
+                )
+                db.add(new_rec)
                 db.flush()
 
                 create_audit_entry(
                     db=db,
                     user_id=user_id,
-                    action="attendance.changed",
+                    action="attendance.created",
                     entity_name="attendance",
-                    entity_id=existing.id,
-                    old_values=old_val,
-                    new_values={"status": entry.status, "notes": entry.notes},
-                    reason="Teacher updated attendance record"
+                    entity_id=new_rec.id,
+                    new_values={"status": entry.status, "date": str(attendance_in.date)},
+                    reason="Teacher recorded attendance"
                 )
-            saved_count += 1
-        else:
-            new_rec = AttendanceRecord(
-                session_id=attendance_in.session_id,
-                class_id=attendance_in.class_id,
-                section_id=attendance_in.section_id,
-                subject_id=attendance_in.subject_id,
-                student_id=entry.student_id,
-                date=attendance_in.date,
-                status=entry.status,
-                recorded_by=recorded_by_teacher_id,
-                notes=entry.notes
-            )
-            db.add(new_rec)
-            db.flush()
-
-            create_audit_entry(
-                db=db,
-                user_id=user_id,
-                action="attendance.created",
-                entity_name="attendance",
-                entity_id=new_rec.id,
-                new_values={"status": entry.status, "date": str(attendance_in.date)},
-                reason="Teacher recorded attendance"
-            )
-            saved_count += 1
+                saved_count += 1
 
     db.commit()
     return saved_count

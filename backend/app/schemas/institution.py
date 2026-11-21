@@ -36,7 +36,14 @@ class ClassBase(BaseModel):
 
 
 class ClassCreate(ClassBase):
-    pass
+    subject_ids: Optional[List[int]] = None
+
+
+class ClassSubjectAssign(BaseModel):
+    subject_id: Optional[int] = None
+    name: Optional[str] = None
+    code: Optional[str] = None
+    description: Optional[str] = None
 
 
 class ClassResponse(ClassBase):

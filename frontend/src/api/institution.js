@@ -37,6 +37,21 @@ export const institutionApi = {
     return res.data;
   },
 
+  // Class-Specific Subjects (Independent per Class)
+  getClassSubjects: async (classId) => {
+    if (!classId) return [];
+    const res = await api.get(`/institution/classes/${classId}/subjects`);
+    return res.data;
+  },
+  assignClassSubject: async (classId, data) => {
+    const res = await api.post(`/institution/classes/${classId}/subjects`, data);
+    return res.data;
+  },
+  removeClassSubject: async (classId, subjectId) => {
+    const res = await api.delete(`/institution/classes/${classId}/subjects/${subjectId}`);
+    return res.data;
+  },
+
   // Subjects
   getSubjects: async () => {
     const res = await api.get('/institution/subjects');

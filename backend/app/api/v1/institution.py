@@ -16,6 +16,7 @@ from backend.app.schemas.institution import (
     AcademicSessionResponse,
     ClassCreate,
     ClassResponse,
+    ClassSubjectAssign,
     EnrollmentCreate,
     EnrollmentResponse,
     SectionCreate,
@@ -30,6 +31,7 @@ from backend.app.schemas.institution import (
     TeacherResponse,
 )
 from backend.app.services.institution_service import (
+    assign_subject_to_class,
     assign_teacher_to_subject,
     create_class,
     create_section,
@@ -38,6 +40,7 @@ from backend.app.services.institution_service import (
     create_teacher,
     enroll_student,
     get_active_session,
+    get_class_subjects,
     get_classes,
     get_sections,
     get_sessions,
@@ -46,6 +49,7 @@ from backend.app.services.institution_service import (
     get_teacher_assignments,
     get_teachers,
     import_student_roster,
+    remove_subject_from_class,
 )
 
 router = APIRouter(prefix="/institution", tags=["Institution Management"])
@@ -102,6 +106,48 @@ def api_create_section(
 @router.get("/classes/{class_id}/sections", response_model=List[SectionResponse])
 def api_get_sections(class_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return get_sections(db, class_id=class_id)
+
+
+# Class-Specific Subjects (Independent per Class/Grade)
+@router.get("/classes/{class_id}/subjects", response_model=List[SubjectResponse])
+def api_get_class_subjects(class_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Retrieve subjects configured independently for a specific class."""
+    return get_class_subjects(db, class_id=class_id)
+
+
+@router.post("/classes/{class_id}/subjects", response_model=SubjectResponse)
+def api_assign_class_subject(
+    class_id: int,
+    payload: ClassSubjectAssign,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin)
+):
+    """Assign an existing subject or create and link a new subject to a specific class."""
+    subject_data = None
+    if payload.name and payload.code:
+        subject_data = {
+            "name": payload.name,
+            "code": payload.code,
+            "description": payload.description
+        }
+    return assign_subject_to_class(
+        db,
+        class_id=class_id,
+        subject_id=payload.subject_id,
+        subject_data=subject_data,
+        user_id=admin.id
+    )
+
+
+@router.delete("/classes/{class_id}/subjects/{subject_id}")
+def api_remove_class_subject(
+    class_id: int,
+    subject_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin)
+):
+    """Remove a subject association from a specific class."""
+    return remove_subject_from_class(db, class_id=class_id, subject_id=subject_id, user_id=admin.id)
 
 
 # Subjects

@@ -72,7 +72,10 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (err) {
       console.error('Session init error:', err);
-      logout();
+      // Only logout if 401 unauthorized
+      if (err.response?.status === 401) {
+        logout();
+      }
     }
   }, [logout]);
 
@@ -105,9 +108,23 @@ export const AuthProvider = ({ children }) => {
     if (res.refresh_token) {
       localStorage.setItem('refresh_token', res.refresh_token);
     }
-    hydratedTokenRef.current = res.access_token;
-    await hydrateSession(res.access_token);
+    const baseUser = {
+      id: res.user_id,
+      username: res.username,
+      role: res.role,
+      student_id: res.student_id,
+      teacher_id: res.teacher_id,
+    };
+    setUser(baseUser);
+    sessionStorage.setItem('edwise_user', JSON.stringify(baseUser));
     setToken(res.access_token);
+    hydratedTokenRef.current = res.access_token;
+
+    // Background hydrate full profile without blocking immediate navigation
+    hydrateSession(res.access_token).catch((err) => {
+      console.warn('Background hydration notice:', err);
+    });
+
     return res;
   };
 
