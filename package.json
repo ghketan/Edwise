@@ -1,0 +1,25 @@
+{
+  "name": "edwise-platform",
+  "version": "1.0.0",
+  "description": "EDWISE - AI-Assisted Student Performance & Learning Analytics Platform",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "python -m uvicorn backend.app.main:app --reload --host 127.0.0.1 --port 8000",
+    "build": "npm --prefix frontend run build",
+    "build:frontend": "npm --prefix frontend run build",
+    "test:backend": "pytest backend/tests -v",
+    "seed": "python backend/seed_data.py"
+  },
+  "keywords": [
+    "learning-analytics",
+    "edwise",
+    "fastapi",
+    "react",
+    "machine-learning"
+  ],
+  "author": "EDWISE Development Team",
+  "license": "UNLICENSED"
+}
+
