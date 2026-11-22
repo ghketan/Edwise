@@ -9,6 +9,7 @@ from backend.app.api.v1 import (
     doubts,
     exams,
     institution,
+    legal,
     marks,
     ml,
     recommendations,
@@ -34,4 +35,5 @@ api_router.include_router(students.router)
 api_router.include_router(recommendations.router)
 api_router.include_router(reports.router)
 api_router.include_router(audit.router)
+api_router.include_router(legal.router)
 

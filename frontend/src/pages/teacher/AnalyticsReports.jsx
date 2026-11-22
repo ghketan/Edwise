@@ -192,14 +192,20 @@ export default function AnalyticsReports() {
     }
   };
 
+  const formatPercentage = (val) => {
+    if (val === null || val === undefined || isNaN(val)) return '0.0';
+    const num = Number(val);
+    return (num > 1 ? num : num * 100).toFixed(1);
+  };
+
   const subjectAttendanceData = attendanceAnalytics?.by_subject?.map((s) => ({
     name: s.subject_name,
-    rate: parseFloat((s.attendance_rate * 100).toFixed(1)),
+    rate: parseFloat(formatPercentage(s.attendance_rate)),
   })) || [];
 
   const trendData = attendanceAnalytics?.trends?.map((t) => ({
     period: t.period,
-    rate: parseFloat((t.attendance_rate * 100).toFixed(1)),
+    rate: parseFloat(formatPercentage(t.attendance_rate)),
   })) || [];
 
   return (
@@ -272,11 +278,11 @@ export default function AnalyticsReports() {
                 Formatted academic evaluation sheet with official institutional header and synthetic notice.
               </p>
             </div>
-            <div className="mt-2 flex gap-2">
+            <div className="mt-2 flex flex-col sm:flex-row gap-2">
               <select
                 value={selectedStudent}
                 onChange={(e) => setSelectedStudent(e.target.value)}
-                className="flex-1 text-[11px] px-2 py-1 rounded border border-slate-300 bg-white focus:outline-none"
+                className="flex-1 min-w-0 text-[11px] px-2 py-1 rounded border border-slate-300 bg-white focus:outline-none"
               >
                 {students.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -287,7 +293,7 @@ export default function AnalyticsReports() {
               <button
                 onClick={handleDownloadStudentPdf}
                 disabled={downloading || !selectedStudent}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-rose-600 hover:bg-rose-700 text-white shadow-sm transition disabled:opacity-50"
+                className="shrink-0 inline-flex items-center justify-center gap-1 px-3 py-1 text-xs font-semibold rounded-lg bg-rose-600 hover:bg-rose-700 text-white shadow-sm transition disabled:opacity-50"
               >
                 <FileDown className="w-3.5 h-3.5" /> PDF
               </button>
@@ -325,7 +331,7 @@ export default function AnalyticsReports() {
             </div>
             {attendanceAnalytics && (
               <span className="text-xs font-semibold text-slate-600">
-                Overall: {(attendanceAnalytics.overall_attendance_rate * 100).toFixed(1)}%
+                Overall: {formatPercentage(attendanceAnalytics.overall_attendance_rate)}%
               </span>
             )}
           </div>
@@ -436,7 +442,7 @@ export default function AnalyticsReports() {
               </div>
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
                 <span className="text-slate-500 block text-[10px] uppercase font-semibold">Pass Rate</span>
-                <span className="text-base font-bold text-emerald-600">{(examAnalytics.pass_rate * 100).toFixed(1)}%</span>
+                <span className="text-base font-bold text-emerald-600">{formatPercentage(examAnalytics.pass_rate)}%</span>
               </div>
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
                 <span className="text-slate-500 block text-[10px] uppercase font-semibold">Highest</span>

@@ -20,10 +20,48 @@ DUMMY_BCRYPT_HASH = "$2b$12$e8YkZ7kR74lXy9pUqT2K.O/Q0w5eXF6v1H1pZ7kR74lXy9pUqT2K
 
 def authenticate_user(db: Session, username: str, password: str) -> Optional[User]:
     """
-    Verify username, password, and active+verified status (C-05, H-06).
+    Verify username/identifier, password, and active+verified status (C-05, H-06).
+    Supports exact username, case-insensitive username, student admission number,
+    contact email, and demo student aliases (alex_rivers / alex_carter).
     Timing-safe against user enumeration.
     """
-    user = db.query(User).filter(User.username == username).first()
+    from sqlalchemy import func
+
+    clean_username = (username or "").strip()
+    if not clean_username:
+        verify_password(password, DUMMY_BCRYPT_HASH)
+        return None
+
+    # 1. Exact match on username
+    user = db.query(User).filter(User.username == clean_username).first()
+
+    # 2. Case-insensitive match on username
+    if not user:
+        user = db.query(User).filter(func.lower(User.username) == clean_username.lower()).first()
+
+    # 3. Match on User.email if present
+    if not user:
+        user = db.query(User).filter(func.lower(User.email) == clean_username.lower()).first()
+
+    # 4. Match via Student admission_number or contact_email
+    if not user:
+        student = (
+            db.query(Student)
+            .filter(
+                (func.lower(Student.admission_number) == clean_username.lower())
+                | (func.lower(Student.contact_email) == clean_username.lower())
+            )
+            .first()
+        )
+        if student and student.user_id:
+            user = db.query(User).filter(User.id == student.user_id).first()
+
+    # 5. Demo student aliases (alex_rivers / alex_carter) mapping to primary seeded student STU1001
+    if not user and clean_username.lower() in ("alex_rivers", "alex_carter", "alex rivers", "alex carter"):
+        student = db.query(Student).filter(Student.admission_number == "STU1001").first()
+        if student and student.user_id:
+            user = db.query(User).filter(User.id == student.user_id).first()
+
     if not user:
         # Dummy verification to equalize timing against enumeration
         verify_password(password, DUMMY_BCRYPT_HASH)

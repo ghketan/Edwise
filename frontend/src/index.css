@@ -2,10 +2,137 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --color-surface: #faf8ff;
+  --color-surface-dim: #d2d9f4;
+  --color-surface-bright: #faf8ff;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f2f3ff;
+  --color-surface-container: #eaedff;
+  --color-surface-container-high: #e2e7ff;
+  --color-surface-container-highest: #dae2fd;
+  --color-on-surface: #131b2e;
+  --color-on-surface-variant: #464555;
+  --color-inverse-surface: #283044;
+  --color-inverse-on-surface: #eef0ff;
+  --color-outline: #777587;
+  --color-outline-variant: #c7c4d8;
+}
+
+.dark {
+  --color-surface: #0b132b;
+  --color-surface-dim: #070e1b;
+  --color-surface-bright: #1c2541;
+  --color-surface-container-lowest: #0c1527;
+  --color-surface-container-low: #111e38;
+  --color-surface-container: #172545;
+  --color-surface-container-high: #1e3056;
+  --color-surface-container-highest: #283c66;
+  --color-on-surface: #f1f5f9;
+  --color-on-surface-variant: #cbd5e1;
+  --color-inverse-surface: #f8fafc;
+  --color-inverse-on-surface: #0f172a;
+  --color-outline: #94a3b8;
+  --color-outline-variant: #334155;
+}
+
 @layer base {
   body {
-    @apply bg-canvas-slate text-on-surface antialiased font-sans;
+    @apply bg-canvas-slate text-on-surface antialiased font-sans transition-colors duration-200;
   }
+  .dark body, html.dark body {
+    @apply bg-[#070e1b] text-slate-100;
+  }
+
+  /* Form controls automatic dark mode fallback */
+  .dark input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]),
+  .dark select,
+  .dark textarea {
+    background-color: #0f172a;
+    color: #f1f5f9;
+    border-color: #334155;
+  }
+  .dark input::placeholder,
+  .dark textarea::placeholder {
+    color: #64748b;
+  }
+}
+
+/* Dark Mode Global Cohesive Themes for Cards, Surfaces & Text */
+.dark .bg-white {
+  background-color: rgba(15, 23, 42, 0.85);
+  color: #f1f5f9;
+}
+
+.dark .border-slate-200,
+.dark .border-slate-300 {
+  border-color: rgba(51, 65, 85, 0.6);
+}
+
+.dark .text-slate-900,
+.dark .text-slate-800 {
+  color: #f1f5f9;
+}
+
+.dark .text-slate-700,
+.dark .text-slate-600 {
+  color: #cbd5e1;
+}
+
+.dark .text-slate-500 {
+  color: #94a3b8;
+}
+
+.dark .bg-slate-50,
+.dark .bg-slate-100 {
+  background-color: #1e293b;
+  color: #cbd5e1;
+}
+
+.dark .hover\:bg-slate-50:hover,
+.dark .hover\:bg-slate-100:hover {
+  background-color: #334155;
+}
+
+.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]),
+.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgba(51, 65, 85, 0.6);
+}
+
+/* Tables in dark mode */
+.dark th {
+  background-color: #0f172a;
+  color: #94a3b8;
+}
+
+.dark tr:hover td {
+  background-color: rgba(30, 41, 59, 0.5);
+}
+
+/* Dark tint badges for soft icon cards */
+.dark .bg-indigo-50 {
+  background-color: rgba(49, 46, 129, 0.4);
+  color: #818cf8;
+}
+.dark .bg-emerald-50 {
+  background-color: rgba(6, 78, 59, 0.4);
+  color: #34d399;
+}
+.dark .bg-purple-50 {
+  background-color: rgba(88, 28, 135, 0.4);
+  color: #c084fc;
+}
+.dark .bg-blue-50 {
+  background-color: rgba(30, 58, 138, 0.4);
+  color: #60a5fa;
+}
+.dark .bg-amber-50 {
+  background-color: rgba(120, 53, 15, 0.4);
+  color: #fbbf24;
+}
+.dark .bg-rose-50 {
+  background-color: rgba(136, 19, 55, 0.4);
+  color: #fb7185;
 }
 
 /* Glassmorphic Surfaces from Stitch Academic Glass Analytics */
@@ -17,6 +144,14 @@
   box-shadow: 0 8px 32px rgba(12, 40, 54, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.85);
 }
 
+.dark .glass-panel {
+  background: rgba(14, 23, 42, 0.82);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
 .glass-card {
   background: rgba(255, 255, 255, 0.82);
   backdrop-filter: blur(14px);
@@ -25,8 +160,20 @@
   box-shadow: 0 6px 24px rgba(15, 23, 42, 0.04);
 }
 
+.dark .glass-card {
+  background: rgba(30, 41, 59, 0.75);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(51, 65, 85, 0.6);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+}
+
 .glass-card:hover {
   box-shadow: 0 12px 36px rgba(15, 23, 42, 0.08);
+}
+
+.dark .glass-card:hover {
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
 }
 
 /* Ambient glow orbs */
@@ -43,6 +190,11 @@
   z-index: 0;
 }
 
+.dark .ambient-glow-cyan {
+  background: rgba(6, 182, 212, 0.2);
+  filter: blur(72px);
+}
+
 .ambient-glow-indigo {
   position: absolute;
   top: 8rem;
@@ -56,6 +208,11 @@
   z-index: 0;
 }
 
+.dark .ambient-glow-indigo {
+  background: rgba(99, 102, 241, 0.22);
+  filter: blur(72px);
+}
+
 /* Custom scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
@@ -64,10 +221,234 @@
 ::-webkit-scrollbar-track {
   background: #f1f5f9;
 }
+.dark ::-webkit-scrollbar-track {
+  background: #0f172a;
+}
 ::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 3px;
 }
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* =========================================================================
+   Blackboard & Academic Chalk Visuals (from Attached Specification)
+   ========================================================================= */
+
+/* Deep Chalkboard Canvas Background (Dark Mode) */
+.blackboard-bg {
+  background-color: #090e17;
+  background-image: 
+    radial-gradient(circle at 18% 22%, rgba(79, 70, 229, 0.18) 0%, transparent 45%),
+    radial-gradient(circle at 82% 28%, rgba(14, 165, 233, 0.16) 0%, transparent 50%),
+    radial-gradient(circle at 50% 88%, rgba(30, 41, 59, 0.6) 0%, transparent 55%),
+    linear-gradient(180deg, #090e17 0%, #0c1424 50%, #0f172a 100%);
+  transition: background 0.4s ease, background-color 0.4s ease, color 0.4s ease;
+}
+
+/* Light Academic Parchment / Blueprint Grid (Light Mode) */
+html:not(.dark) .blackboard-bg, .light .blackboard-bg {
+  background-color: #f8fafc;
+  background-image: 
+    radial-gradient(circle at 20% 25%, rgba(99, 102, 241, 0.08) 0%, transparent 45%),
+    radial-gradient(circle at 80% 30%, rgba(14, 165, 233, 0.08) 0%, transparent 50%),
+    radial-gradient(circle at 50% 90%, rgba(226, 232, 240, 0.7) 0%, transparent 60%),
+    linear-gradient(180deg, #faf8ff 0%, #f1f5f9 50%, #e2e8f0 100%);
+}
+
+/* Subtle Slate Coordinate Grid */
+.chalk-grid {
+  background-size: 36px 36px;
+  background-image: linear-gradient(to right, rgba(255, 255, 255, 0.032) 1px, transparent 1px),
+                    linear-gradient(to bottom, rgba(255, 255, 255, 0.032) 1px, transparent 1px);
+}
+html:not(.dark) .chalk-grid, .light .chalk-grid {
+  background-image: linear-gradient(to right, rgba(79, 70, 229, 0.045) 1px, transparent 1px),
+                    linear-gradient(to bottom, rgba(79, 70, 229, 0.045) 1px, transparent 1px);
+}
+
+/* Pristine Luminous Glassmorphic Card Container */
+.glass-surface-canvas {
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(28px) saturate(200%);
+  -webkit-backdrop-filter: blur(28px) saturate(200%);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 30px 70px -15px rgba(2, 6, 23, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.85) inset, 0 0 45px rgba(56, 189, 248, 0.18);
+}
+html:not(.dark) .glass-surface-canvas, .light .glass-surface-canvas {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(255, 255, 255, 0.95) inset, 0 8px 30px rgba(99, 102, 241, 0.08);
+}
+
+/* Explicit high-contrast preservation inside white glass-surface-canvas in both themes */
+.glass-surface-canvas,
+.dark .glass-surface-canvas {
+  color: #1e293b;
+}
+
+/* All white card controls inside the luminous white glass-surface-canvas must stay crisp white with dark slate text in BOTH themes */
+.glass-surface-canvas .bg-white,
+.dark .glass-surface-canvas .bg-white {
+  background-color: #ffffff !important;
+  color: #1e293b !important;
+  border-color: #e2e8f0 !important;
+}
+
+.glass-surface-canvas .bg-slate-50,
+.dark .glass-surface-canvas .bg-slate-50,
+.glass-surface-canvas .bg-slate-100,
+.dark .glass-surface-canvas .bg-slate-100,
+.glass-surface-canvas [class*="bg-slate-50"],
+.dark .glass-surface-canvas [class*="bg-slate-50"],
+.glass-surface-canvas [class*="bg-slate-100"],
+.dark .glass-surface-canvas [class*="bg-slate-100"] {
+  background-color: #f1f5f9 !important;
+  color: #334155 !important;
+  border-color: #e2e8f0 !important;
+}
+
+.glass-surface-canvas .text-slate-900,
+.dark .glass-surface-canvas .text-slate-900 {
+  color: #0f172a !important;
+}
+
+.glass-surface-canvas .text-slate-800,
+.dark .glass-surface-canvas .text-slate-800 {
+  color: #1e293b !important;
+}
+
+.glass-surface-canvas .text-slate-700,
+.dark .glass-surface-canvas .text-slate-700 {
+  color: #334155 !important;
+}
+
+.glass-surface-canvas .text-slate-600,
+.dark .glass-surface-canvas .text-slate-600 {
+  color: #475569 !important;
+}
+
+.glass-surface-canvas .text-slate-500,
+.dark .glass-surface-canvas .text-slate-500 {
+  color: #64748b !important;
+}
+
+.glass-surface-canvas input,
+.dark .glass-surface-canvas input,
+.glass-surface-canvas select,
+.dark .glass-surface-canvas select {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+  color: #1e293b !important;
+  border-color: #cbd5e1 !important;
+}
+
+.glass-surface-canvas input::placeholder,
+.dark .glass-surface-canvas input::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* Floating Chalk & Glyphs Animations */
+@keyframes float-mote {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+    opacity: 0.35;
+  }
+  50% {
+    transform: translate3d(12px, -35px, 0) rotate(8deg);
+    opacity: 0.75;
+  }
+  100% {
+    transform: translate3d(-8px, -70px, 0) rotate(-6deg);
+    opacity: 0.35;
+  }
+}
+
+@keyframes float-gentle {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(-6px, -14px, 0) rotate(1.5deg);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 0.14;
+    filter: drop-shadow(0 0 8px rgba(99, 102, 241, 0.2));
+  }
+  50% {
+    opacity: 0.26;
+    filter: drop-shadow(0 0 16px rgba(56, 189, 248, 0.45));
+  }
+}
+
+@keyframes chalk-draw {
+  0% {
+    stroke-dashoffset: 400;
+  }
+  50% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dashoffset: -400;
+  }
+}
+
+.animate-float-slow {
+  animation: float-gentle 9s ease-in-out infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 7s ease-in-out infinite;
+}
+
+.animate-dust-1 {
+  animation: float-mote 14s ease-in-out infinite alternate;
+}
+.animate-dust-2 {
+  animation: float-mote 18s ease-in-out infinite alternate-reverse;
+}
+.animate-dust-3 {
+  animation: float-mote 12s ease-in-out infinite alternate;
+}
+
+.chalk-line-anim {
+  stroke-dasharray: 200;
+  animation: chalk-draw 16s linear infinite;
+}
+
+/* Light Theme Line Art overrides */
+html:not(.dark) .illustration-chalk-card, .light .illustration-chalk-card {
+  background-color: rgba(255, 255, 255, 0.88) !important;
+  border-color: rgba(203, 213, 225, 0.8) !important;
+  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08) !important;
+}
+html:not(.dark) .illustration-text-contrast, .light .illustration-text-contrast {
+  color: #1e293b !important;
+}
+html:not(.dark) .student-svg-body, .light .student-svg-body {
+  fill: #475569 !important;
+  stroke: #0f172a !important;
+}
+html:not(.dark) .student-svg-head, .light .student-svg-head {
+  fill: #334155 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-float-slow,
+  .animate-pulse-glow,
+  .animate-dust-1,
+  .animate-dust-2,
+  .animate-dust-3,
+  .chalk-line-anim {
+    animation: none !important;
+  }
 }

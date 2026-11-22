@@ -7,6 +7,7 @@ import Sidebar from './components/Sidebar';
 
 // Pages
 import Login from './pages/Login';
+import LegalDocument from './pages/LegalDocument';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import UserManagement from './pages/admin/UserManagement';
 import SetupClasses from './pages/admin/SetupClasses';
@@ -28,7 +29,7 @@ import StudentAssignments from './pages/student/StudentAssignments';
 // Main App Layout with Navbar, Sidebar & Ambient Glow
 function AppLayout() {
   return (
-    <div className="min-h-screen flex flex-col bg-canvas-slate overflow-x-hidden relative">
+    <div className="min-h-screen flex flex-col bg-canvas-slate dark:bg-[#070e1b] text-on-surface dark:text-slate-100 overflow-x-hidden relative transition-colors duration-200">
       {/* Atmospheric depth glows from Academic Glass Analytics */}
       <div className="ambient-glow-cyan"></div>
       <div className="ambient-glow-indigo"></div>
@@ -62,6 +63,8 @@ export default function App() {
         <Routes>
           {/* Public login & student self-registration */}
           <Route path="/login" element={<Login />} />
+          <Route path="/privacy" element={<LegalDocument defaultType="privacy" />} />
+          <Route path="/terms" element={<LegalDocument defaultType="terms" />} />
 
           {/* Protected Application Routes */}
           <Route element={<ProtectedRoute />}>
