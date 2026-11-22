@@ -4,9 +4,13 @@ from sqlalchemy.orm import Session
 from backend.app.api.deps import (
     check_student_scope,
     check_teacher_scope,
+    check_teacher_students_section_scope,
     get_current_user,
     get_db,
+    get_student_class_section,
+    get_teacher_subject_ids,
     require_teacher_or_admin,
+    teacher_allowed_sections,
 )
 from backend.app.core.exceptions import NotFoundError, ValidationError
 from backend.app.models.academics import Exam
@@ -20,6 +24,8 @@ from backend.app.services.academics_service import (
 )
 
 router = APIRouter(prefix="/marks", tags=["Marks"])
+
+MAX_CSV_BYTES = 2 * 1024 * 1024
 
 
 @router.put("")
@@ -44,6 +50,15 @@ def api_save_marks(
         subject_id=exam.subject_id,
         session_id=exam.session_id,
         section_id=exam.section_id
+    )
+
+    check_teacher_students_section_scope(
+        db=db,
+        user=current_user,
+        student_ids=[e.student_id for e in marks_in.entries],
+        class_id=exam.class_id,
+        subject_id=exam.subject_id,
+        session_id=exam.session_id
     )
 
     teacher_id = current_user.teacher_profile.id if current_user.teacher_profile else None
@@ -78,7 +93,16 @@ def api_get_exam_marks(
         section_id=exam.section_id
     )
 
-    return get_marks_for_exam(db, exam_id=exam_id)
+    marks = get_marks_for_exam(db, exam_id=exam_id)
+    allowed_sections = teacher_allowed_sections(
+        db, current_user, exam.class_id, exam.subject_id, exam.session_id
+    )
+    if allowed_sections is not None:
+        marks = [
+            m for m in marks
+            if get_student_class_section(db, m.student_id, exam.session_id)[1] in allowed_sections
+        ]
+    return marks
 
 
 @router.get("/student/{student_id}", response_model=List[MarkResponse])
@@ -94,7 +118,16 @@ def api_get_student_marks(
     Out-of-scope access returns 404 (T-004).
     """
     check_student_scope(db=db, user=current_user, student_id=student_id, session_id=session_id)
-    return get_marks_for_student(db, student_id=student_id, session_id=session_id)
+    # Subject-level scoping: teachers only see marks for subjects they teach
+    allowed_subjects = None
+    if current_user.role == UserRole.TEACHER:
+        allowed_subjects = get_teacher_subject_ids(db, current_user, session_id=session_id)
+    return get_marks_for_student(
+        db,
+        student_id=student_id,
+        session_id=session_id,
+        allowed_subject_ids=allowed_subjects
+    )
 
 
 @router.post("/upload-csv")
@@ -102,7 +135,7 @@ async def api_upload_marks_csv(
     file: UploadFile = File(...),
     session_id: int = Form(...),
     exam_id: Optional[int] = Form(None),
-    reason: str = Form("Bulk marks CSV import"),
+    reason: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_teacher_or_admin)
 ):
@@ -125,10 +158,15 @@ async def api_upload_marks_csv(
         )
 
     teacher_id = current_user.teacher_profile.id if current_user.teacher_profile else None
-    content = await file.read()
+    content = await file.read(MAX_CSV_BYTES + 1)
+    if len(content) > MAX_CSV_BYTES:
+        raise ValidationError(f"CSV file exceeds the {MAX_CSV_BYTES // (1024 * 1024)} MB size limit")
     if not content or not content.strip():
         raise ValidationError("Uploaded CSV file is empty")
-    csv_text = content.decode("utf-8-sig", errors="ignore")
+    try:
+        csv_text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise ValidationError("CSV file must be UTF-8 encoded")
     count = import_marks_csv(
         db=db,
         csv_text=csv_text,

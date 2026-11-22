@@ -147,6 +147,121 @@ def check_teacher_class_scope(
     return True
 
 
+def get_student_class_section(
+    db: Session,
+    student_id: int,
+    session_id: Optional[int] = None
+):
+    """Returns (class_id, section_id) effective for the student in the session."""
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        return None, None
+    class_id = student.class_id
+    section_id = student.section_id
+    if session_id:
+        enrollment = db.query(Enrollment).filter(
+            Enrollment.student_id == student_id,
+            Enrollment.session_id == session_id
+        ).first()
+        if enrollment:
+            class_id = enrollment.class_id
+            section_id = enrollment.section_id if enrollment.section_id is not None else student.section_id
+    return class_id, section_id
+
+
+def get_teacher_subject_ids(
+    db: Session,
+    user: User,
+    class_id: Optional[int] = None,
+    session_id: Optional[int] = None,
+    section_id: Optional[int] = None
+) -> Optional[set]:
+    """
+    Subject-level scope helper. Returns None for administrators (unrestricted),
+    otherwise the set of subject ids the teacher is assigned to
+    (optionally narrowed by class / session / section).
+    """
+    if user.role == UserRole.ADMINISTRATOR:
+        return None
+    if user.role != UserRole.TEACHER or not user.teacher_profile:
+        return set()
+    query = db.query(ClassSubjectTeacher).filter(
+        ClassSubjectTeacher.teacher_id == user.teacher_profile.id
+    )
+    if class_id is not None:
+        query = query.filter(ClassSubjectTeacher.class_id == class_id)
+    if session_id is not None:
+        query = query.filter(ClassSubjectTeacher.session_id == session_id)
+    if section_id is not None:
+        query = query.filter(
+            (ClassSubjectTeacher.section_id == section_id) | (ClassSubjectTeacher.section_id.is_(None))
+        )
+    return {a.subject_id for a in query.all()}
+
+
+def check_teacher_students_section_scope(
+    db: Session,
+    user: User,
+    student_ids: List[int],
+    class_id: int,
+    subject_id: Optional[int],
+    session_id: int
+) -> bool:
+    """
+    Section-level object authorization for bulk writes (marks / attendance).
+    Every student written must sit in a section the teacher is assigned to
+    (class-wide assignments cover all sections). Out-of-scope -> 404.
+    """
+    if user.role == UserRole.ADMINISTRATOR:
+        return True
+    if user.role != UserRole.TEACHER or not user.teacher_profile:
+        raise NotFoundError("Resource not found or out of scope")
+
+    query = db.query(ClassSubjectTeacher).filter(
+        ClassSubjectTeacher.teacher_id == user.teacher_profile.id,
+        ClassSubjectTeacher.class_id == class_id,
+        ClassSubjectTeacher.session_id == session_id
+    )
+    if subject_id is not None:
+        query = query.filter(ClassSubjectTeacher.subject_id == subject_id)
+    assignments = query.all()
+    if not assignments:
+        raise NotFoundError("Resource not found or out of scope")
+    if any(a.section_id is None for a in assignments):
+        return True
+    allowed_sections = {a.section_id for a in assignments}
+    for sid in student_ids:
+        _, sec = get_student_class_section(db, sid, session_id)
+        if sec is None or sec not in allowed_sections:
+            raise NotFoundError("Resource not found or out of scope")
+    return True
+
+
+def teacher_allowed_sections(
+    db: Session,
+    user: User,
+    class_id: int,
+    subject_id: Optional[int],
+    session_id: int
+) -> Optional[set]:
+    """None => all sections allowed (admin or class-wide assignment); else the allowed section ids."""
+    if user.role == UserRole.ADMINISTRATOR:
+        return None
+    if user.role != UserRole.TEACHER or not user.teacher_profile:
+        return set()
+    query = db.query(ClassSubjectTeacher).filter(
+        ClassSubjectTeacher.teacher_id == user.teacher_profile.id,
+        ClassSubjectTeacher.class_id == class_id,
+        ClassSubjectTeacher.session_id == session_id
+    )
+    if subject_id is not None:
+        query = query.filter(ClassSubjectTeacher.subject_id == subject_id)
+    assignments = query.all()
+    if any(a.section_id is None for a in assignments):
+        return None
+    return {a.section_id for a in assignments}
+
+
 def check_student_scope(
     db: Session,
     user: User,
@@ -187,7 +302,7 @@ def check_student_scope(
             ).first()
             if enrollment:
                 class_id = enrollment.class_id
-                section_id = enrollment.section_id
+                section_id = enrollment.section_id if enrollment.section_id is not None else student.section_id
 
         # Verify teacher teaches this class and section
         return check_teacher_class_scope(

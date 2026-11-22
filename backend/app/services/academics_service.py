@@ -4,7 +4,7 @@ from typing import List, Optional
 import math
 import numpy as np
 from sqlalchemy.orm import Session
-from backend.app.api.deps import check_teacher_scope
+from backend.app.api.deps import check_teacher_scope, get_student_class_section
 from backend.app.core.exceptions import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from backend.app.models.academics import (
     Announcement,
@@ -39,59 +39,129 @@ from backend.app.schemas.academics import (
 from backend.app.services.audit_service import create_audit_entry
 
 
+MIN_REASON_LENGTH = 5
+MAX_REASON_LENGTH = 255
+
+
+def normalize_reason(reason: Optional[str], required: bool, default: str) -> str:
+    """
+    R-014: Justification handling for audited changes.
+    - A supplied reason is trimmed and must be 5..255 characters.
+    - A missing/blank reason is only tolerated for brand-new records (required=False).
+    """
+    cleaned = (reason or "").strip()
+    if cleaned:
+        if len(cleaned) < MIN_REASON_LENGTH:
+            raise ValidationError(f"Reason must be at least {MIN_REASON_LENGTH} characters")
+        if len(cleaned) > MAX_REASON_LENGTH:
+            raise ValidationError(f"Reason must be {MAX_REASON_LENGTH} characters or fewer")
+        return cleaned
+    if required:
+        raise ValidationError(
+            f"A justification (reason, at least {MIN_REASON_LENGTH} characters) is required when changing existing records"
+        )
+    return default
+
+
+def _escape_like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def assert_student_in_class(
+    db: Session,
+    student_id: int,
+    session_id: int,
+    class_id: int,
+    section_id: Optional[int] = None
+) -> None:
+    """
+    Verifies a student is actively enrolled in the class (and section, if given) for the session.
+    A student with an enrollment row for the session must satisfy it (active + same class);
+    only students without any enrollment row fall back to their default class record.
+    """
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        raise ValidationError(f"Student {student_id} not found")
+
+    enrollment = db.query(Enrollment).filter(
+        Enrollment.student_id == student_id,
+        Enrollment.session_id == session_id
+    ).first()
+    if enrollment:
+        if enrollment.status != "active" or enrollment.class_id != class_id:
+            raise ValidationError(f"Student {student_id} is not actively enrolled in class {class_id} for this session")
+        effective_section = enrollment.section_id if enrollment.section_id is not None else student.section_id
+    else:
+        if student.class_id != class_id:
+            raise ValidationError(f"Student {student_id} is not actively enrolled in class {class_id} for this session")
+        effective_section = student.section_id
+
+    if section_id is not None and effective_section != section_id:
+        raise ValidationError(f"Student {student_id} is not enrolled in section {section_id}")
+
+
 # Attendance Service
 def save_attendance(
     db: Session,
     attendance_in: AttendanceBulkSave,
     recorded_by_teacher_id: Optional[int] = None,
-    user_id: Optional[int] = None
+    user_id: Optional[int] = None,
+    allowed_subject_ids: Optional[set] = None
 ) -> int:
     """
     Contract API-001, R-004, R-014, H-02, M-05:
     Upsert attendance records with enrollment validation and audit logging.
     All entries pre-validated before database modifications.
+    `allowed_subject_ids` (teachers only) restricts which subjects a full-day save may touch.
     """
+    entries = attendance_in.entries or []
+    if not entries:
+        raise ValidationError("At least one attendance entry is required")
+
     # 1. Pre-validate student uniqueness within the bulk request (M-05)
     seen_students = set()
-    for entry in attendance_in.entries:
+    for entry in entries:
         if entry.student_id in seen_students:
             raise ValidationError(f"Duplicate student_id {entry.student_id} in attendance entries")
         seen_students.add(entry.student_id)
 
-    # 2. Pre-validate student enrollment in target class and session (H-02)
-    for entry in attendance_in.entries:
-        enrollment = db.query(Enrollment).filter(
-            Enrollment.student_id == entry.student_id,
-            Enrollment.session_id == attendance_in.session_id,
-            Enrollment.class_id == attendance_in.class_id,
-            Enrollment.status == "active"
-        ).first()
-        if not enrollment:
-            # Fall back to checking Student record default class
-            st = db.query(Student).filter(Student.id == entry.student_id).first()
-            if not st or st.class_id != attendance_in.class_id:
-                raise ValidationError(
-                    f"Student {entry.student_id} is not actively enrolled in class {attendance_in.class_id}"
-                )
+    # 2. Pre-validate student enrollment in target class, section and session (H-02)
+    if attendance_in.section_id is not None:
+        sec_obj = db.query(Section).filter(Section.id == attendance_in.section_id).first()
+        if not sec_obj or sec_obj.class_id != attendance_in.class_id:
+            raise ValidationError("Section does not belong to the specified class")
+    for entry in entries:
+        assert_student_in_class(
+            db,
+            student_id=entry.student_id,
+            session_id=attendance_in.session_id,
+            class_id=attendance_in.class_id,
+            section_id=attendance_in.section_id
+        )
 
     # Determine target subjects (either specified subject or all subjects of class for full day)
     target_subject_ids = []
     if attendance_in.subject_id:
+        subj = db.query(Subject).filter(Subject.id == attendance_in.subject_id).first()
+        if not subj:
+            raise NotFoundError("Subject not found")
         target_subject_ids = [attendance_in.subject_id]
     else:
         from backend.app.services.institution_service import get_class_subjects
         subs = get_class_subjects(db, attendance_in.class_id)
-        if subs:
-            target_subject_ids = [s.id for s in subs]
-        else:
-            cst_subs = db.query(ClassSubjectTeacher.subject_id).filter(
-                ClassSubjectTeacher.class_id == attendance_in.class_id
-            ).distinct().all()
-            target_subject_ids = [s[0] for s in cst_subs] if cst_subs else [1]
+        target_subject_ids = [s.id for s in subs] if subs else []
+        if allowed_subject_ids is not None:
+            target_subject_ids = [sid for sid in target_subject_ids if sid in allowed_subject_ids]
+        if not target_subject_ids:
+            raise ValidationError("No subjects available for this class to record full-day attendance")
+
+    change_reason = (attendance_in.reason or "").strip() or None
+    if change_reason is not None:
+        change_reason = normalize_reason(change_reason, required=False, default="")
 
     saved_count = 0
     for target_sub_id in target_subject_ids:
-        for entry in attendance_in.entries:
+        for entry in entries:
             existing = db.query(AttendanceRecord).filter(
                 AttendanceRecord.student_id == entry.student_id,
                 AttendanceRecord.session_id == attendance_in.session_id,
@@ -100,11 +170,14 @@ def save_attendance(
             ).first()
 
             if existing:
-                if existing.status != entry.status or existing.notes != entry.notes or existing.class_id != attendance_in.class_id:
+                if existing.class_id != attendance_in.class_id:
+                    raise ConflictError(
+                        f"Attendance for student {entry.student_id} on this date already belongs to a different class"
+                    )
+                if existing.status != entry.status or existing.notes != entry.notes:
                     old_val = {"status": existing.status, "notes": existing.notes}
                     existing.status = entry.status
                     existing.notes = entry.notes
-                    existing.class_id = attendance_in.class_id
                     existing.section_id = attendance_in.section_id
                     existing.recorded_by = recorded_by_teacher_id
                     db.flush()
@@ -117,7 +190,7 @@ def save_attendance(
                         entity_id=existing.id,
                         old_values=old_val,
                         new_values={"status": entry.status, "notes": entry.notes},
-                        reason="Teacher updated attendance record"
+                        reason=change_reason or "Teacher updated attendance record"
                     )
                 saved_count += 1
             else:
@@ -142,7 +215,7 @@ def save_attendance(
                     entity_name="attendance",
                     entity_id=new_rec.id,
                     new_values={"status": entry.status, "date": str(attendance_in.date)},
-                    reason="Teacher recorded attendance"
+                    reason=change_reason or "Teacher recorded attendance"
                 )
                 saved_count += 1
 
@@ -269,6 +342,7 @@ def save_marks(
         seen_students.add(entry.student_id)
 
     # 2. Pre-validate all scores and enrollment before modifying database (Invariant 3, H-02, H-03)
+    changes_existing = False
     for entry in marks_in.entries:
         if entry.is_absent and entry.score is not None:
             raise ValidationError("Student marked absent cannot simultaneously have a recorded score")
@@ -281,19 +355,32 @@ def save_marks(
                     f"Score {entry.score} is out of bounds for exam max marks {exam.max_marks}"
                 )
 
-        # Invariant 3: Verify student is actively enrolled in the exam's class and session
-        enrollment = db.query(Enrollment).filter(
-            Enrollment.student_id == entry.student_id,
-            Enrollment.session_id == exam.session_id,
-            Enrollment.class_id == exam.class_id,
-            Enrollment.status == "active"
+        # Invariant 3: Verify student is actively enrolled in the exam's class, section and session
+        assert_student_in_class(
+            db,
+            student_id=entry.student_id,
+            session_id=exam.session_id,
+            class_id=exam.class_id,
+            section_id=exam.section_id
+        )
+
+        existing_mark = db.query(Mark).filter(
+            Mark.exam_id == marks_in.exam_id,
+            Mark.student_id == entry.student_id
         ).first()
-        if not enrollment:
-            st = db.query(Student).filter(Student.id == entry.student_id).first()
-            if not st or st.class_id != exam.class_id:
-                raise ValidationError(
-                    f"Student {entry.student_id} is not actively enrolled in class {exam.class_id} for this session"
-                )
+        if existing_mark and (
+            existing_mark.score != entry.score
+            or existing_mark.is_absent != entry.is_absent
+            or existing_mark.remarks != entry.remarks
+        ):
+            changes_existing = True
+
+    # R-014: changing an existing mark mandates a real justification
+    audit_reason = normalize_reason(
+        marks_in.reason,
+        required=changes_existing,
+        default="Initial score entry"
+    )
 
     saved_count = 0
     for entry in marks_in.entries:
@@ -319,7 +406,7 @@ def save_marks(
                     entity_id=existing.id,
                     old_values=old_val,
                     new_values={"score": entry.score, "is_absent": entry.is_absent, "remarks": entry.remarks},
-                    reason=marks_in.reason or "Score updated by teacher"
+                    reason=audit_reason
                 )
             saved_count += 1
         else:
@@ -341,7 +428,7 @@ def save_marks(
                 entity_name="mark",
                 entity_id=new_mark.id,
                 new_values={"score": entry.score, "is_absent": entry.is_absent},
-                reason=marks_in.reason or "Score entered by teacher"
+                reason=audit_reason
             )
             saved_count += 1
 
@@ -353,10 +440,19 @@ def get_marks_for_exam(db: Session, exam_id: int) -> List[Mark]:
     return db.query(Mark).filter(Mark.exam_id == exam_id).all()
 
 
-def get_marks_for_student(db: Session, student_id: int, session_id: Optional[int] = None) -> List[Mark]:
+def get_marks_for_student(
+    db: Session,
+    student_id: int,
+    session_id: Optional[int] = None,
+    allowed_subject_ids: Optional[set] = None
+) -> List[Mark]:
     query = db.query(Mark).join(Exam, Mark.exam_id == Exam.id).filter(Mark.student_id == student_id)
     if session_id:
         query = query.filter(Exam.session_id == session_id)
+    if allowed_subject_ids is not None:
+        if not allowed_subject_ids:
+            return []
+        query = query.filter(Exam.subject_id.in_(list(allowed_subject_ids)))
     return query.order_by(Exam.date.desc()).all()
 
 
@@ -786,7 +882,7 @@ def import_marks_csv(
     session_id: int,
     entered_by_teacher_id: Optional[int] = None,
     user_id: Optional[int] = None,
-    reason: str = "Bulk CSV marks import",
+    reason: Optional[str] = None,
     current_user: Optional[User] = None,
     default_exam_id: Optional[int] = None
 ) -> int:
@@ -869,12 +965,11 @@ def import_marks_csv(
         if score_val is None:
             raise ValidationError(f"Row {row_num}: Missing score for student '{adm}'")
 
-        if adm.isascii() and adm.isdigit():
-            student = db.query(Student).filter(
-                (Student.admission_number == adm) | (Student.id == int(adm))
-            ).first()
-        else:
-            student = db.query(Student).filter(Student.admission_number == adm).first()
+        # Admission number takes strict precedence; a numeric value only falls back to the
+        # internal student id when no student has that admission number (avoids mis-attribution).
+        student = db.query(Student).filter(Student.admission_number == adm).first()
+        if not student and adm.isascii() and adm.isdigit():
+            student = db.query(Student).filter(Student.id == int(adm)).first()
 
         if not student:
             raise ValidationError(f"Row {row_num}: Student '{adm}' not found")
@@ -916,7 +1011,7 @@ def import_marks_csv(
         elif exam_name is not None:
             exam_name_clean = exam_name.strip()
             q = db.query(Exam).filter(
-                Exam.name.ilike(f"%{exam_name_clean}%"),
+                Exam.name.ilike(f"%{_escape_like(exam_name_clean)}%", escape="\\"),
                 Exam.session_id == session_id,
                 Exam.class_id == target_class_id,
             )
@@ -936,12 +1031,23 @@ def import_marks_csv(
                         | (ClassSubjectTeacher.section_id.is_(None))
                     )
                 assigned_subj_ids = [a.subject_id for a in cst_query.all()]
-                if assigned_subj_ids:
-                    exam = q.filter(Exam.subject_id.in_(assigned_subj_ids)).first()
-            if not exam:
-                exam = q.first()
-            if not exam:
+            else:
+                assigned_subj_ids = []
+            candidates = q.all()
+            if assigned_subj_ids:
+                narrowed = [e for e in candidates if e.subject_id in assigned_subj_ids]
+                if narrowed:
+                    candidates = narrowed
+            exact = [e for e in candidates if (e.name or "").strip().lower() == exam_name_clean.lower()]
+            if exact:
+                candidates = exact
+            if not candidates:
                 raise ValidationError(f"Row {row_num}: Exam '{exam_name_clean}' not found in session {session_id}")
+            if len(candidates) > 1:
+                raise ValidationError(
+                    f"Row {row_num}: Exam name '{exam_name_clean}' is ambiguous; specify the Exam ID instead"
+                )
+            exam = candidates[0]
         else:
             q = db.query(Exam).filter(Exam.class_id == target_class_id, Exam.session_id == session_id)
             if effective_section_id is not None:
@@ -962,7 +1068,12 @@ def import_marks_csv(
                 assigned_subj_ids = [a.subject_id for a in cst_query.all()]
                 if assigned_subj_ids:
                     q = q.filter(Exam.subject_id.in_(assigned_subj_ids))
-            exam = q.first()
+            candidates = q.all()
+            if len(candidates) > 1:
+                raise ValidationError(
+                    f"Row {row_num}: Multiple exams match student '{adm}'; specify the Exam ID or Exam Name"
+                )
+            exam = candidates[0] if candidates else None
             if not exam:
                 raise ValidationError(f"Row {row_num}: No exam found for student '{adm}' in session {session_id}")
 
@@ -1024,11 +1135,23 @@ def import_marks_csv(
     if not validated_rows:
         raise ValidationError("No valid mark rows found in CSV")
 
+    # R-014: any change to an existing mark requires an explicit justification
+    changes_existing = False
+    for exam, student, score_float in validated_rows:
+        em = db.query(Mark).filter(Mark.exam_id == exam.id, Mark.student_id == student.id).first()
+        if em and (em.score != score_float or em.is_absent):
+            changes_existing = True
+            break
+    reason = normalize_reason(reason, required=changes_existing, default="Bulk CSV marks import")
+
     count = 0
     for exam, student, score_float in validated_rows:
         existing_mark = db.query(Mark).filter(Mark.exam_id == exam.id, Mark.student_id == student.id).first()
         if existing_mark:
-            old_val = {"score": existing_mark.score}
+            if existing_mark.score == score_float and not existing_mark.is_absent:
+                count += 1
+                continue
+            old_val = {"score": existing_mark.score, "is_absent": existing_mark.is_absent}
             existing_mark.score = score_float
             existing_mark.is_absent = False
             existing_mark.entered_by = entered_by_teacher_id
@@ -1040,7 +1163,7 @@ def import_marks_csv(
                 entity_name="mark",
                 entity_id=existing_mark.id,
                 old_values=old_val,
-                new_values={"score": score_float},
+                new_values={"score": score_float, "is_absent": False},
                 reason=reason
             )
         else:

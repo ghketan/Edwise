@@ -137,7 +137,7 @@ export default function TeacherNoticeBoard({
             onChange={(e) => setTargetClassId(e.target.value)}
             className="w-full text-xs rounded-xl border border-glass-border bg-surface-container-lowest px-3 py-2 text-on-surface font-semibold focus:outline-none focus:ring-2 focus:ring-primary-container"
           >
-            <option value="">All Cohorts (Broadcast)</option>
+            <option value="">All Classes</option>
             {scopedClasses.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -197,9 +197,10 @@ export default function TeacherNoticeBoard({
           </div>
         ) : (
           announcements.map((item) => {
+            const itemTeacherId = item.teacher_id ?? item.author_teacher_id;
             const isAuthor =
               role === 'ADMINISTRATOR' ||
-              (currentTeacherId && item.author_teacher_id === currentTeacherId);
+              (currentTeacherId && itemTeacherId === currentTeacherId);
             const isHigh = item.priority === 'urgent' || item.priority === 'high' || item.priority === 'High';
 
             return (
@@ -230,6 +231,7 @@ export default function TeacherNoticeBoard({
                         onClick={() => handleDelete(item.id)}
                         disabled={deletingId === item.id}
                         title="Delete Notice"
+                        aria-label="Delete Notice"
                         className="p-1 text-outline hover:text-rose-600 hover:bg-status-rose-bg rounded-lg transition"
                       >
                         <Trash2 className="w-3.5 h-3.5" />

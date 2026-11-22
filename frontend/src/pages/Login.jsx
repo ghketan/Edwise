@@ -43,18 +43,20 @@ export default function Login() {
     }
   }, [user, navigate]);
 
-  // Load classes for roster claim dropdown
+  // Load classes for roster claim dropdown only when claiming roster
   useEffect(() => {
-    institutionApi
-      .getClasses()
-      .then((cls) => {
-        if (Array.isArray(cls) && cls.length > 0) {
-          setClasses(cls);
-          setClassId(String(cls[0].id));
-        }
-      })
-      .catch(() => {});
-  }, []);
+    if (!isLoginTab && classes.length === 0) {
+      institutionApi
+        .getClasses()
+        .then((cls) => {
+          if (Array.isArray(cls) && cls.length > 0) {
+            setClasses(cls);
+            setClassId(String(cls[0].id));
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isLoginTab, classes.length]);
 
   // Quick Demo Profiles
   const demoProfiles = {

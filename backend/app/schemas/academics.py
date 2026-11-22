@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from typing import Any, List, Optional
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 # Attendance
@@ -29,6 +29,7 @@ class AttendanceBulkSave(BaseModel):
     subject_id: Optional[int] = None
     is_full_day: bool = False
     date: date
+    reason: Optional[str] = None
     entries: Optional[List[AttendanceEntry]] = None
     records: Optional[List[AttendanceEntry]] = None
 
@@ -151,7 +152,7 @@ class MarksBulkSave(BaseModel):
     """
     exam_id: int
     entries: List[MarkEntry]
-    reason: Optional[str] = "Routine score recording"
+    reason: Optional[str] = None
 
 
 class MarkResponse(BaseModel):
@@ -194,13 +195,28 @@ class AssignmentResponse(AssignmentBase):
 # Submission
 class SubmissionCreate(BaseModel):
     assignment_id: int
-    content: Optional[str] = None
-    attachment_url: Optional[str] = None
+    content: Optional[str] = Field(None, max_length=10000)
+    attachment_url: Optional[str] = Field(None, max_length=500)
+
+    @field_validator("attachment_url")
+    @classmethod
+    def validate_attachment_url(cls, v: Optional[str]) -> Optional[str]:
+        """Only external http(s) links may be client-supplied; internal file paths are server-generated."""
+        if v is None:
+            return None
+        cleaned = v.strip()
+        if not cleaned:
+            return None
+        lowered = cleaned.lower()
+        if not (lowered.startswith("http://") or lowered.startswith("https://")):
+            raise ValueError("attachment_url must be an http(s) link")
+        return cleaned
 
 
 class SubmissionGrade(BaseModel):
     points_awarded: float
     feedback: Optional[str] = None
+    reason: Optional[str] = None
 
 
 class SubmissionResponse(BaseModel):

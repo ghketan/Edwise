@@ -88,8 +88,7 @@ def api_create_class(
 @router.get("/classes", response_model=List[ClassResponse])
 def api_get_classes(
     session_id: Optional[int] = None,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     return get_classes(db, session_id=session_id)
 

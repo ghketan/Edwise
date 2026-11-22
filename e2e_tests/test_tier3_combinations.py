@@ -102,7 +102,7 @@ def test_T3_02_teacher_creates_and_deletes_notice_reflected_on_student_board(
 
     page, _ = page_with_watcher
     ui_login(page, frontend_url, *TEACHER_SARAH_CREDS, expected_url_part="/teacher")
-    board = page.locator("section, div").filter(has_text=re.compile(r"Notice Board|Announcements", re.I)).last
+    board = page.locator("section").filter(has_text=re.compile(r"Notice Board|Announcements", re.I)).first
 
     board.get_by_placeholder(re.compile(r"title", re.I)).first.fill(high_title)
     board.locator("textarea").first.fill("High priority body")
