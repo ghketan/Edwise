@@ -5,6 +5,7 @@ from typing import List, Optional
 import uuid
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import FileResponse
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from backend.app.api.deps import (
     check_teacher_class_scope,
@@ -68,7 +69,9 @@ def api_get_assignments(
     """
     query = db.query(Assignment).filter(Assignment.session_id == session_id)
 
-    if current_user.role == UserRole.STUDENT and current_user.student_profile:
+    if current_user.role == UserRole.STUDENT:
+        if not current_user.student_profile:
+            return []
         st = current_user.student_profile
         # Find active enrollment or student class
         enr = db.query(Enrollment).filter(
@@ -76,14 +79,16 @@ def api_get_assignments(
             Enrollment.session_id == session_id
         ).first()
         st_class_id = enr.class_id if enr else st.class_id
-        st_section_id = enr.section_id if enr else st.section_id
+        st_section_id = (enr.section_id if enr and enr.section_id is not None else st.section_id)
 
         query = query.filter(Assignment.class_id == st_class_id)
         if st_section_id:
             query = query.filter(
                 (Assignment.section_id == st_section_id) | (Assignment.section_id.is_(None))
             )
-    elif current_user.role == UserRole.TEACHER and current_user.teacher_profile:
+    elif current_user.role == UserRole.TEACHER:
+        if not current_user.teacher_profile:
+            return []
         assignments = db.query(ClassSubjectTeacher).filter(
             ClassSubjectTeacher.teacher_id == current_user.teacher_profile.id,
             ClassSubjectTeacher.session_id == session_id
@@ -91,9 +96,18 @@ def api_get_assignments(
         if class_id:
             check_teacher_class_scope(db=db, user=current_user, class_id=class_id, session_id=session_id)
             query = query.filter(Assignment.class_id == class_id)
-        else:
-            teacher_class_ids = list(set(a.class_id for a in assignments))
-            query = query.filter(Assignment.class_id.in_(teacher_class_ids))
+        if not assignments:
+            return []
+        # Subject-level scope: only (class, subject[, section]) combinations the teacher is assigned to
+        scope_filters = []
+        for a in assignments:
+            cond = (Assignment.class_id == a.class_id) & (Assignment.subject_id == a.subject_id)
+            if a.section_id is not None:
+                cond = cond & ((Assignment.section_id == a.section_id) | (Assignment.section_id.is_(None)))
+            scope_filters.append(cond)
+        query = query.filter(or_(*scope_filters))
+    elif current_user.role != UserRole.ADMINISTRATOR:
+        return []
 
     if class_id and current_user.role == UserRole.ADMINISTRATOR:
         query = query.filter(Assignment.class_id == class_id)
@@ -246,15 +260,40 @@ def api_submit_assignment_file(
 @router.get("/files/{filename}")
 def api_get_assignment_file(
     filename: str,
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Securely serves uploaded assignment submission files.
+    Securely serves uploaded assignment submission files with strict role-based scoping (A2).
     """
     safe_filename = os.path.basename(filename)
+    if not safe_filename or safe_filename != filename:
+        raise NotFoundError("Submission file not found")
+
     file_path = os.path.join(settings.BASE_DIR, "uploads", "assignments", safe_filename)
     if not os.path.isfile(file_path):
         raise NotFoundError("Submission file not found")
+
+    submission = db.query(Submission).filter(Submission.attachment_url.like(f"%{safe_filename}")).first()
+    if not submission:
+        raise NotFoundError("Submission file not found")
+
+    if current_user.role == UserRole.ADMINISTRATOR:
+        pass
+    elif current_user.role == UserRole.STUDENT:
+        if not current_user.student_profile or submission.student_id != current_user.student_profile.id:
+            raise ForbiddenError("You are not authorized to view this submission file")
+    elif current_user.role == UserRole.TEACHER:
+        check_teacher_scope(
+            db=db,
+            user=current_user,
+            class_id=submission.assignment.class_id,
+            subject_id=submission.assignment.subject_id,
+            session_id=submission.assignment.session_id,
+            section_id=submission.assignment.section_id
+        )
+    else:
+        raise ForbiddenError("Access denied")
 
     return FileResponse(file_path, filename=safe_filename)
 

@@ -131,10 +131,11 @@ async def edwise_exception_handler(request: Request, exc: EdwiseException):
     )
 
 
-# Mount static uploads directory for exam datesheets
+# Note: /uploads is NOT mounted as StaticFiles to prevent unauthenticated direct file enumeration.
+# All downloads (datesheets, assignment submissions) are strictly routed through authenticated,
+# scoped endpoints: /api/v1/exams/{id}/datesheet and /api/v1/assignments/files/{filename}.
 uploads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "backend", "uploads")
 os.makedirs(uploads_dir, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 
 # Include API v1 Router
 app.include_router(api_router, prefix=settings.API_V1_STR)

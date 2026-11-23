@@ -9,6 +9,7 @@ from backend.app.api.deps import (
     check_teacher_students_section_scope,
     get_current_user,
     get_db,
+    get_student_class_section,
     get_teacher_subject_ids,
     require_teacher_or_admin,
 )
@@ -97,6 +98,31 @@ def api_save_attendance(
         saved_count=count,
         server_timestamp=datetime.now(timezone.utc)
     )
+
+
+def _filter_records_for_teacher(db: Session, user: User, session_id: int, records):
+    """Subject + section level read scoping: keep only records the teacher is assigned to."""
+    assignments = db.query(ClassSubjectTeacher).filter(
+        ClassSubjectTeacher.teacher_id == user.teacher_profile.id,
+        ClassSubjectTeacher.session_id == session_id
+    ).all()
+    section_cache = {}
+
+    def record_section(r):
+        if r.section_id is not None:
+            return r.section_id
+        if r.student_id not in section_cache:
+            section_cache[r.student_id] = get_student_class_section(db, r.student_id, session_id)[1]
+        return section_cache[r.student_id]
+
+    allowed = []
+    for r in records:
+        for a in assignments:
+            if a.class_id == r.class_id and a.subject_id == r.subject_id:
+                if a.section_id is None or a.section_id == record_section(r):
+                    allowed.append(r)
+                    break
+    return allowed
 
 
 @router.get("", response_model=List[AttendanceRecordResponse])
