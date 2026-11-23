@@ -1,5 +1,7 @@
+import asyncio
 from typing import List, Optional
 from fastapi import APIRouter, Depends
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 from backend.app.api.deps import (
     check_student_scope,
@@ -85,17 +87,21 @@ def api_get_feature_drift(
     return calculate_feature_drift(db=db, session_id=session_id)
 
 
+sim_limit = asyncio.Semaphore(2)
+
+
 @router.post("/predict-live", response_model=LivePredictOutput)
-def api_predict_live(
+async def api_predict_live(
     payload: LivePredictInput,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
     Real-time interactive What-If score simulator across Linear Regression,
-    Random Forest, and XGBoost with recommended study hours and risk diagnosis.
+    Random Forest, and XGBoost with concurrency capping to prevent memory spikes.
     """
-    return predict_live_simulator(data=payload, db=db)
+    async with sim_limit:
+        return await run_in_threadpool(predict_live_simulator, data=payload, db=db)
 
 
 @router.post("/switch-model")

@@ -2,16 +2,22 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import declarative_base, sessionmaker
 from backend.app.core.config import settings
 
-# Create engine with appropriate dialect arguments
-connect_args = {}
+# Create engine with appropriate dialect arguments and tuned connection pool
 if settings.DATABASE_URL.startswith("sqlite"):
-    connect_args = {"check_same_thread": False}
-
-engine = create_engine(
-    settings.DATABASE_URL,
-    connect_args=connect_args,
-    echo=False
-)
+    engine = create_engine(
+        settings.DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        echo=False
+    )
+else:
+    # Production PostgreSQL pool tuning to minimize idle memory buffers
+    engine = create_engine(
+        settings.DATABASE_URL,
+        pool_size=3,
+        max_overflow=2,
+        pool_pre_ping=True,
+        echo=False
+    )
 
 # Enforce foreign key constraints for SQLite
 if settings.DATABASE_URL.startswith("sqlite"):

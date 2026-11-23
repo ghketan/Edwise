@@ -112,18 +112,18 @@
     ],
     "split_method": "5-Fold Grouped CV",
     "metrics": {
-      "mae": 6.02,
-      "rmse": 7.51,
-      "r2": 0.797,
-      "cv_score": 0.779,
-      "uncertainty_residual_std": 2.87
+      "mae": 5.97,
+      "rmse": 7.48,
+      "r2": 0.798,
+      "cv_score": 0.776,
+      "uncertainty_residual_std": 4.87
     },
     "artifact_path": "D:\\Projects\\Edwise\\backend\\app\\ml_engine\\artifacts\\random_forest_v1.joblib"
   },
   "xgboost": {
     "version": "v1.0.0-xgb",
     "task": "regression",
-    "model_name": "XGBoost Regressor (Gradient Boosting)",
+    "model_name": "XGBoost Regressor (HistGradientBoosting)",
     "data_source": "DS-003 Synthetic Institution Data (Seed 42)",
     "is_synthetic": true,
     "features": [
@@ -133,11 +133,11 @@
     ],
     "split_method": "5-Fold Grouped CV",
     "metrics": {
-      "mae": 6.28,
-      "rmse": 8.0,
-      "r2": 0.769,
-      "cv_score": 0.749,
-      "uncertainty_residual_std": 2.08
+      "mae": 6.09,
+      "rmse": 7.64,
+      "r2": 0.79,
+      "cv_score": 0.78,
+      "uncertainty_residual_std": 6.03
     },
     "artifact_path": "D:\\Projects\\Edwise\\backend\\app\\ml_engine\\artifacts\\xgboost_v1.joblib"
   }

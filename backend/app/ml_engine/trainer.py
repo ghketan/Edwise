@@ -4,9 +4,8 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.ensemble import HistGradientBoostingRegressor, RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LinearRegression, LogisticRegression
-from xgboost import XGBRegressor
 from sklearn.metrics import accuracy_score, f1_score, mean_absolute_error, mean_squared_error, precision_score, r2_score, recall_score
 from sklearn.model_selection import KFold, cross_val_score
 from backend.app.core.config import settings
@@ -69,10 +68,10 @@ def train_and_save_artifacts() -> dict:
     residual_std = float(round(np.std(residuals), 2))
 
     reg_artifact_path = os.path.join(settings.MODEL_ARTIFACTS_DIR, "regression_v1.joblib")
-    joblib.dump({"model": final_reg, "residual_std": residual_std, "features": features}, reg_artifact_path)
+    joblib.dump({"model": final_reg, "residual_std": residual_std, "features": features}, reg_artifact_path, compress=3)
 
-    # 1b. Random Forest Regressor
-    rf_model = RandomForestRegressor(n_estimators=120, max_depth=12, random_state=42)
+    # 1b. Random Forest Regressor (Optimized parameters to prevent memory bloat)
+    rf_model = RandomForestRegressor(n_estimators=40, max_depth=6, random_state=42)
     rf_preds = []
     for train_idx, test_idx in kf.split(X):
         X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
@@ -85,15 +84,15 @@ def train_and_save_artifacts() -> dict:
     rf_r2 = float(round(r2_score(reg_actuals, rf_preds), 3))
     rf_cv_score = float(round(np.mean(cross_val_score(rf_model, X, y_reg, cv=5, scoring='r2')), 3))
 
-    final_rf = RandomForestRegressor(n_estimators=120, max_depth=12, random_state=42)
+    final_rf = RandomForestRegressor(n_estimators=40, max_depth=6, random_state=42)
     final_rf.fit(X, y_reg)
     rf_residuals = y_reg - final_rf.predict(X)
     rf_residual_std = float(round(np.std(rf_residuals), 2))
     rf_artifact_path = os.path.join(settings.MODEL_ARTIFACTS_DIR, "random_forest_v1.joblib")
-    joblib.dump({"model": final_rf, "residual_std": rf_residual_std, "features": features}, rf_artifact_path)
+    joblib.dump({"model": final_rf, "residual_std": rf_residual_std, "features": features}, rf_artifact_path, compress=3)
 
-    # 1c. XGBoost Regressor
-    xgb_model = XGBRegressor(n_estimators=120, learning_rate=0.08, max_depth=6, random_state=42)
+    # 1c. HistGradientBoosting Regressor (Lightweight histogram gradient boosting, eliminates XGBoost C++ heap overhead)
+    xgb_model = HistGradientBoostingRegressor(max_iter=40, learning_rate=0.08, max_depth=4, random_state=42)
     xgb_preds = []
     for train_idx, test_idx in kf.split(X):
         X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
@@ -106,12 +105,12 @@ def train_and_save_artifacts() -> dict:
     xgb_r2 = float(round(r2_score(reg_actuals, xgb_preds), 3))
     xgb_cv_score = float(round(np.mean(cross_val_score(xgb_model, X, y_reg, cv=5, scoring='r2')), 3))
 
-    final_xgb = XGBRegressor(n_estimators=120, learning_rate=0.08, max_depth=6, random_state=42)
+    final_xgb = HistGradientBoostingRegressor(max_iter=40, learning_rate=0.08, max_depth=4, random_state=42)
     final_xgb.fit(X, y_reg)
     xgb_residuals = y_reg - final_xgb.predict(X)
     xgb_residual_std = float(round(np.std(xgb_residuals), 2))
     xgb_artifact_path = os.path.join(settings.MODEL_ARTIFACTS_DIR, "xgboost_v1.joblib")
-    joblib.dump({"model": final_xgb, "residual_std": xgb_residual_std, "features": features}, xgb_artifact_path)
+    joblib.dump({"model": final_xgb, "residual_std": xgb_residual_std, "features": features}, xgb_artifact_path, compress=3)
 
     # 2. Classification (At-Risk)
     clf_model = LogisticRegression(class_weight="balanced", random_state=42)
@@ -141,7 +140,7 @@ def train_and_save_artifacts() -> dict:
     final_clf = LogisticRegression(class_weight="balanced", random_state=42)
     final_clf.fit(X, y_clf)
     clf_artifact_path = os.path.join(settings.MODEL_ARTIFACTS_DIR, "classifier_v1.joblib")
-    joblib.dump({"model": final_clf, "features": features}, clf_artifact_path)
+    joblib.dump({"model": final_clf, "features": features}, clf_artifact_path, compress=3)
 
     # 3. K-Means Clustering (Exploratory R-011)
     kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
@@ -170,7 +169,7 @@ def train_and_save_artifacts() -> dict:
         })
 
     kmeans_artifact_path = os.path.join(settings.MODEL_ARTIFACTS_DIR, "kmeans_v1.joblib")
-    joblib.dump({"model": kmeans, "cluster_centers": cluster_centers, "features": features}, kmeans_artifact_path)
+    joblib.dump({"model": kmeans, "cluster_centers": cluster_centers, "features": features}, kmeans_artifact_path, compress=3)
 
     metadata = {
         "regression": {
@@ -247,7 +246,7 @@ def train_and_save_artifacts() -> dict:
         "xgboost": {
             "version": "v1.0.0-xgb",
             "task": "regression",
-            "model_name": "XGBoost Regressor (Gradient Boosting)",
+            "model_name": "XGBoost Regressor (HistGradientBoosting)",
             "data_source": "DS-003 Synthetic Institution Data (Seed 42)",
             "is_synthetic": True,
             "features": features,

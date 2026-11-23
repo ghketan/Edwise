@@ -1,4 +1,5 @@
 import os
+from functools import lru_cache
 from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 import joblib
@@ -391,20 +392,17 @@ def calculate_feature_drift(
     )
 
 
-def predict_live_simulator(data: LivePredictInput, db: Session) -> LivePredictOutput:
+@lru_cache(maxsize=256)
+def _cached_simulator_models(prior_exam_avg: float, attendance_rate: float, assignment_rate: float) -> Tuple[float, float, float]:
     """
-    Live real-time 'What-If' performance score simulation across
-    Linear Regression, Random Forest, and XGBoost models.
+    Evaluates regression models with float32 vectors and caches results (LRU maxsize=256)
+    to eliminate redundant inference allocations during interactive What-If slider adjustments.
     """
-    prior_exam_avg = float(np.mean([data.unit_test_score, data.mid_term_score, data.previous_exam_score]))
-    attendance_rate = float(data.attendance_pct)
-    assignment_rate = float(np.mean([data.assignment_score, data.practical_score]))
-
     X = pd.DataFrame([{
         "prior_exam_avg": prior_exam_avg,
         "attendance_rate": attendance_rate,
         "assignment_rate": assignment_rate
-    }])
+    }], dtype=np.float32)
 
     # 1. Linear Regression
     lin_pred = 74.0
@@ -435,6 +433,20 @@ def predict_live_simulator(data: LivePredictInput, db: Session) -> LivePredictOu
             xgb_pred = float(np.clip(xgb_art["model"].predict(X)[0], 0, 100))
     except Exception:
         pass
+
+    return lin_pred, rf_pred, xgb_pred
+
+
+def predict_live_simulator(data: LivePredictInput, db: Session) -> LivePredictOutput:
+    """
+    Live real-time 'What-If' performance score simulation across
+    Linear Regression, Random Forest, and XGBoost models.
+    """
+    prior_exam_avg = round(float(np.mean([data.unit_test_score, data.mid_term_score, data.previous_exam_score])), 2)
+    attendance_rate = round(float(data.attendance_pct), 2)
+    assignment_rate = round(float(np.mean([data.assignment_score, data.practical_score])), 2)
+
+    lin_pred, rf_pred, xgb_pred = _cached_simulator_models(prior_exam_avg, attendance_rate, assignment_rate)
 
     active_reg = get_active_model(db, task="regression")
     active_name = active_reg.model_name if active_reg else "Linear Regression"
@@ -498,8 +510,10 @@ def switch_active_model(db: Session, target_name: str, user_id: Optional[int] = 
         "random_forest": lambda m: "random forest" in m.model_name.lower(),
         "random forest": lambda m: "random forest" in m.model_name.lower(),
         "rf": lambda m: "random forest" in m.model_name.lower(),
-        "xgboost": lambda m: "xgboost" in m.model_name.lower(),
-        "xgb": lambda m: "xgboost" in m.model_name.lower(),
+        "xgboost": lambda m: "xgboost" in m.model_name.lower() or "gradient" in m.model_name.lower() or m.version == "v1.0.0-xgb",
+        "xgb": lambda m: "xgboost" in m.model_name.lower() or "gradient" in m.model_name.lower() or m.version == "v1.0.0-xgb",
+        "gradient_boosting": lambda m: "gradient" in m.model_name.lower() or "xgboost" in m.model_name.lower(),
+        "histgradientboosting": lambda m: "gradient" in m.model_name.lower() or "xgboost" in m.model_name.lower(),
     }
 
     matched = None

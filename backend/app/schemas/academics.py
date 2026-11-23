@@ -208,8 +208,8 @@ class SubmissionCreate(BaseModel):
         if not cleaned:
             return None
         lowered = cleaned.lower()
-        if not (lowered.startswith("http://") or lowered.startswith("https://")):
-            raise ValueError("attachment_url must be an http(s) link")
+        if not (lowered.startswith("http://") or lowered.startswith("https://") or lowered.startswith("/api/v1/assignments/files/")):
+            raise ValueError("attachment_url must be an http(s) link or valid assignment file endpoint")
         return cleaned
 
 

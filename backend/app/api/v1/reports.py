@@ -1,5 +1,7 @@
+import asyncio
 from typing import Optional
 from fastapi import APIRouter, Depends
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from backend.app.api.deps import (
@@ -19,9 +21,11 @@ from backend.app.services.report_service import (
 
 router = APIRouter(prefix="/reports", tags=["Reports & Exports"])
 
+export_limit = asyncio.Semaphore(2)
+
 
 @router.get("/student/{student_id}/pdf")
-def api_student_report_pdf(
+async def api_student_report_pdf(
     student_id: int,
     session_id: int,
     db: Session = Depends(get_db),
@@ -29,17 +33,17 @@ def api_student_report_pdf(
 ):
     """
     R-013, UI-007, C-02, M-06: Export student progress report in PDF format.
-    Students can only download their own report.
-    Teachers can only download reports for their assigned students.
-    Audited on export (M-06).
+    Capped with export_limit semaphore to prevent memory spikes under concurrent downloads.
     """
     check_student_scope(db=db, user=current_user, student_id=student_id, session_id=session_id)
-    pdf_buffer = generate_student_report_pdf(
-        db=db,
-        student_id=student_id,
-        session_id=session_id,
-        requester_role=current_user.role.value
-    )
+    async with export_limit:
+        pdf_buffer = await run_in_threadpool(
+            generate_student_report_pdf,
+            db=db,
+            student_id=student_id,
+            session_id=session_id,
+            requester_role=current_user.role.value
+        )
     create_audit_entry(
         db=db,
         user_id=current_user.id,
@@ -59,7 +63,7 @@ def api_student_report_pdf(
 
 
 @router.get("/student/{student_id}/excel")
-def api_student_report_excel(
+async def api_student_report_excel(
     student_id: int,
     session_id: int,
     db: Session = Depends(get_db),
@@ -69,12 +73,14 @@ def api_student_report_excel(
     R-013, UI-007, C-02, M-06: Export student progress report in Excel format.
     """
     check_student_scope(db=db, user=current_user, student_id=student_id, session_id=session_id)
-    excel_buffer = generate_student_report_excel(
-        db=db,
-        student_id=student_id,
-        session_id=session_id,
-        requester_role=current_user.role.value
-    )
+    async with export_limit:
+        excel_buffer = await run_in_threadpool(
+            generate_student_report_excel,
+            db=db,
+            student_id=student_id,
+            session_id=session_id,
+            requester_role=current_user.role.value
+        )
     create_audit_entry(
         db=db,
         user_id=current_user.id,
@@ -94,7 +100,7 @@ def api_student_report_excel(
 
 
 @router.get("/class/{class_id}/excel")
-def api_class_report_excel(
+async def api_class_report_excel(
     class_id: int,
     session_id: int,
     section_id: Optional[int] = None,
@@ -103,7 +109,7 @@ def api_class_report_excel(
 ):
     """
     R-013, UI-007, C-02, M-06: Export class performance summary in Excel format.
-    Enforces teacher class scope.
+    Enforces teacher class scope and export concurrency limits.
     """
     check_teacher_class_scope(
         db=db,
@@ -112,13 +118,15 @@ def api_class_report_excel(
         session_id=session_id,
         section_id=section_id
     )
-    excel_buffer = generate_class_report_excel(
-        db=db,
-        class_id=class_id,
-        session_id=session_id,
-        section_id=section_id,
-        requester_role=current_user.role.value
-    )
+    async with export_limit:
+        excel_buffer = await run_in_threadpool(
+            generate_class_report_excel,
+            db=db,
+            class_id=class_id,
+            session_id=session_id,
+            section_id=section_id,
+            requester_role=current_user.role.value
+        )
     create_audit_entry(
         db=db,
         user_id=current_user.id,
