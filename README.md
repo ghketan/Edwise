@@ -7,8 +7,14 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-3.4-38B2AC.svg?logo=tailwind-css&logoColor=white)](https://tailwindcss.com)
 [![Scikit-Learn](https://img.shields.io/badge/Scikit--Learn-1.5+-F7931E.svg?logo=scikit-learn&logoColor=white)](https://scikit-learn.org)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791.svg?logo=postgresql&logoColor=white)](https://postgresql.org)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-edwise--c2g.pages.dev-success.svg?logo=cloudflare-pages&logoColor=white)](https://edwise-c2g.pages.dev)
+[![API Status](https://img.shields.io/badge/API-Live%20on%20Render-46E3B7.svg?logo=render&logoColor=white)](https://edwise-backend-wc1l.onrender.com/health)
 [![Tests](https://img.shields.io/badge/Tests-55%2F55%20Passing-brightgreen.svg)]()
 [![Memory Profile](https://img.shields.io/badge/Peak%20RSS-~223%20MB%20(512MB%20Safe)-success.svg)]()
+
+> 🌐 **Live Web Application:** [https://edwise-c2g.pages.dev](https://edwise-c2g.pages.dev)  
+> 📖 **Interactive Swagger API Documentation:** [https://edwise-backend-wc1l.onrender.com/docs](https://edwise-backend-wc1l.onrender.com/docs)  
+> 🩺 **Backend Health Check:** [https://edwise-backend-wc1l.onrender.com/health](https://edwise-backend-wc1l.onrender.com/health)
 
 An evidence-grounded, production-ready educational management and predictive analytics platform. Built with **FastAPI**, **SQLAlchemy**, **Scikit-Learn**, and **React 18 + Tailwind CSS**, designed to deliver real-time academic tracking, ethical machine learning estimates, and administrative oversight within strict 512 MB memory-constrained container environments.
 
@@ -140,6 +146,8 @@ npm run dev
 ---
 
 ## 🔑 Pre-Seeded Default Accounts
+
+You can immediately test these roles on the live web application at **[https://edwise-c2g.pages.dev](https://edwise-c2g.pages.dev)**:
 
 | Role | Username | Password | Purpose |
 | :--- | :--- | :--- | :--- |
