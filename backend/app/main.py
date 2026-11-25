@@ -57,13 +57,22 @@ app = FastAPI(
     openapi_url=None if is_prod else "/openapi.json"
 )
 
-# CORS Middleware
+# Assemble CORS origins from BACKEND_CORS_ORIGINS and ALLOWED_ORIGINS
+cors_origins = list(settings.BACKEND_CORS_ORIGINS)
+if settings.ALLOWED_ORIGINS:
+    for o in settings.ALLOWED_ORIGINS.split(","):
+        clean_o = o.strip()
+        if clean_o and clean_o not in cors_origins:
+            cors_origins.append(clean_o)
+
+# CORS Middleware with automatic Cloudflare Pages regex matching
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.BACKEND_CORS_ORIGINS,
+    allow_origins=cors_origins,
+    allow_origin_regex=r"^https:\/\/.*\.pages\.dev$",
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 REQUEST_ID_REGEX = re.compile(r"^[a-zA-Z0-9\-_]{1,64}$")
