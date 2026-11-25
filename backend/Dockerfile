@@ -19,9 +19,10 @@ RUN if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.
 # Copy backend application source
 COPY . .
 
-# Expose port
+# Default port if not provided by host environment (e.g. Render assigns $PORT)
+ENV PORT=8000
 EXPOSE 8000
 
-# Automatically run seed migrations on boot, then start uvicorn
-CMD ["sh", "-c", "python backend/seed_data.py || true; uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"]
+# Automatically run seed migrations on boot, then start uvicorn bound to $PORT
+CMD ["sh", "-c", "python backend/seed_data.py || true; exec uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
 
