@@ -42,7 +42,7 @@ export default function LegalDocument({ defaultType = null }) {
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
               isPrivacy
                 ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                : 'text-slate-600 dark:text-slate-400 hover:text-black dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-800/60'
             }`}
           >
             Privacy Policy
@@ -52,7 +52,7 @@ export default function LegalDocument({ defaultType = null }) {
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
               !isPrivacy
                 ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                : 'text-slate-600 dark:text-slate-400 hover:text-black dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-800/60'
             }`}
           >
             Terms of Service

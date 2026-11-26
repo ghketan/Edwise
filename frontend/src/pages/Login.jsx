@@ -1194,12 +1194,12 @@ export default function Login() {
       {/* FOOTER BAR */}
       <footer
         id="main-footer"
-        className="relative z-20 w-full max-w-7xl mx-auto px-6 py-6 text-center text-xs text-slate-400 dark:text-slate-400 text-slate-600 space-y-2 transition-colors duration-400"
+        className="relative z-20 w-full max-w-7xl mx-auto px-6 py-6 text-center text-xs text-slate-600 dark:text-slate-400 space-y-2 transition-colors duration-400"
         data-purpose="site-footer"
       >
         <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 font-medium">
-          <span className="inline-flex items-center gap-1 text-slate-300 dark:text-slate-300 text-slate-700 transition-colors">
-            <svg className="w-3.5 h-3.5 text-emerald-400 dark:text-emerald-400 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
+          <span className="inline-flex items-center gap-1 text-slate-700 dark:text-slate-300 transition-colors">
+            <svg className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" fill="currentColor" viewBox="0 0 20 20">
               <path
                 clipRule="evenodd"
                 d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
@@ -1208,9 +1208,9 @@ export default function Login() {
             </svg>
             CBSE &amp; FERPA Compliant
           </span>
-          <span className="text-slate-600 dark:text-slate-600 text-slate-300">•</span>
-          <span className="inline-flex items-center gap-1 text-slate-300 dark:text-slate-300 text-slate-700 transition-colors">
-            <svg className="w-3.5 h-3.5 text-sky-400 dark:text-sky-400 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <span className="text-slate-400 dark:text-slate-600">•</span>
+          <span className="inline-flex items-center gap-1 text-slate-700 dark:text-slate-300 transition-colors">
+            <svg className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
                 strokeLinecap="round"
@@ -1220,19 +1220,19 @@ export default function Login() {
             </svg>
             AES-256 Ledger Audited
           </span>
-          <span className="text-slate-600 dark:text-slate-600 text-slate-300">•</span>
+          <span className="text-slate-400 dark:text-slate-600">•</span>
           <button
             type="button"
             onClick={() => setLegalModalDoc('privacy')}
-            className="hover:text-white dark:hover:text-white hover:text-slate-900 transition-colors cursor-pointer underline-offset-2 hover:underline"
+            className="text-slate-600 dark:text-slate-400 hover:text-black dark:hover:text-white transition-colors cursor-pointer underline-offset-2 hover:underline"
           >
             Privacy Policy
           </button>
-          <span className="text-slate-600 dark:text-slate-600 text-slate-300">•</span>
+          <span className="text-slate-400 dark:text-slate-600">•</span>
           <button
             type="button"
             onClick={() => setLegalModalDoc('terms')}
-            className="hover:text-white dark:hover:text-white hover:text-slate-900 transition-colors cursor-pointer underline-offset-2 hover:underline"
+            className="text-slate-600 dark:text-slate-400 hover:text-black dark:hover:text-white transition-colors cursor-pointer underline-offset-2 hover:underline"
           >
             Terms of Service
           </button>
