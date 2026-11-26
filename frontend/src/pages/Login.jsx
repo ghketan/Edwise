@@ -8,13 +8,10 @@ import LegalModal from '../components/LegalModal';
 
 export default function Login() {
   const [isLoginTab, setIsLoginTab] = useState(true);
-  const [username, setUsername] = useState('dr.rao@edwise.edu');
-  const [password, setPassword] = useState('Admin@123');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [selectedRole, setSelectedRole] = useState({
-    name: 'Admin',
-    badgeClass: 'bg-blue-100 text-blue-800',
-  });
+  const [selectedRole, setSelectedRole] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [statusNotification, setStatusNotification] = useState(null);
@@ -885,12 +882,14 @@ export default function Login() {
                   <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                     Quick Demo Profiles (Click to fill)
                   </span>
-                  <span
-                    id="selected-role-badge"
-                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${selectedRole.badgeClass}`}
-                  >
-                    Role: {selectedRole.name}
-                  </span>
+                  {selectedRole && (
+                    <span
+                      id="selected-role-badge"
+                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${selectedRole.badgeClass}`}
+                    >
+                      Role: {selectedRole.name}
+                    </span>
+                  )}
                 </div>
                 <div className="grid grid-cols-3 gap-1.5">
                   <button
@@ -931,7 +930,10 @@ export default function Login() {
                       type="text"
                       required
                       value={username}
-                      onChange={(e) => setUsername(e.target.value)}
+                      onChange={(e) => {
+                        setUsername(e.target.value);
+                        if (selectedRole) setSelectedRole(null);
+                      }}
                       placeholder="e.g. admin or teacher_sarah"
                       className="w-full h-12 px-4 pr-10 text-xs sm:text-sm rounded-xl border border-slate-200 bg-white/95 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
                     />
@@ -960,7 +962,10 @@ export default function Login() {
                       type={showPassword ? 'text' : 'password'}
                       required
                       value={password}
-                      onChange={(e) => setPassword(e.target.value)}
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        if (selectedRole) setSelectedRole(null);
+                      }}
                       placeholder="••••••••"
                       className="w-full h-12 px-4 pr-16 text-xs sm:text-sm rounded-xl border border-slate-200 bg-white/95 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
                     />
