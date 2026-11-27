@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useTheme } from '../context/ThemeContext';
 import { institutionApi } from '../api/institution';
 import { extractApiError } from '../utils/format';
 import LegalModal from '../components/LegalModal';
@@ -26,8 +25,6 @@ export default function Login() {
   const [classes, setClasses] = useState([]);
 
   const { login, registerStudent, user } = useAuth();
-  const { theme, toggleTheme } = useTheme();
-  const isDark = theme === 'dark';
   const navigate = useNavigate();
   const canvasRef = useRef(null);
 
@@ -287,7 +284,7 @@ export default function Login() {
 
     function spawnChalk(currentX, currentY, isBurst = false) {
       if (prefersReducedMotion) return;
-      const palette = isDark ? darkChalkColors : lightChalkColors;
+      const palette = lightChalkColors;
       const color = palette[Math.floor(Math.random() * palette.length)];
 
       if (lastX !== null && lastY !== null) {
@@ -381,7 +378,7 @@ export default function Login() {
       window.removeEventListener('mouseleave', onMouseLeave);
       if (animId) cancelAnimationFrame(animId);
     };
-  }, [isDark]);
+  }, []);
 
   return (
     <div className="min-h-screen blackboard-bg chalk-grid text-slate-100 font-sans flex flex-col justify-between selection:bg-indigo-600 selection:text-white relative overflow-x-hidden transition-colors duration-400">
@@ -690,59 +687,15 @@ export default function Login() {
 
         {/* Right Header Actions */}
         <div className="flex items-center gap-2.5 sm:gap-4 lg:gap-6">
-          {/* Theme Toggle Button (Light Academic / Dark Chalkboard) */}
-          <button
-            id="theme-toggle-btn"
-            type="button"
-            onClick={toggleTheme}
-            aria-label="Toggle visual theme"
-            title="Toggle Light Academic / Dark Chalkboard theme"
-            className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-900/70 border border-slate-200/90 dark:border-slate-700/80 backdrop-blur-md text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-sm hover:border-indigo-400/60 dark:hover:border-indigo-400/60 hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-all duration-300 group cursor-pointer"
-          >
-            <span
-              id="theme-toggle-icon-wrap"
-              className="relative flex items-center justify-center w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-600 dark:text-indigo-300 transition-transform duration-300 group-hover:scale-110"
-            >
-              {isDark ? (
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                  />
-                </svg>
-              ) : (
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                  />
-                </svg>
-              )}
-            </span>
-            <span id="theme-toggle-label" className="hidden sm:inline-block font-medium tracking-tight text-[11px]">
-              {isDark ? 'Dark Slate' : 'Light Academic'}
-            </span>
-            <span
-              id="theme-toggle-indicator"
-              className={`w-1.5 h-1.5 rounded-full shadow-sm transition-colors ${
-                isDark ? 'bg-cyan-400' : 'bg-amber-500'
-              }`}
-            />
-          </button>
-
           {/* Academic Session Pill */}
           <div
             id="header-session-pill"
-            className="hidden md:flex items-center gap-2 px-3 py-1 rounded-full bg-white/80 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-700/80 backdrop-blur-md text-xs text-slate-700 dark:text-slate-300 shadow-sm transition-colors"
+            className="hidden md:flex items-center gap-2 px-3 py-1 rounded-full bg-white/80 border border-slate-200 backdrop-blur-md text-xs text-slate-700 shadow-sm transition-colors"
           >
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             <span>Session 2026-2027</span>
-            <span className="text-slate-300 dark:text-slate-600">|</span>
-            <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+            <span className="text-slate-300">|</span>
+            <span className="text-emerald-600 font-medium">
               All Nodes Operational
             </span>
           </div>

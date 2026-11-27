@@ -1,7 +1,6 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { GraduationCap, LogOut, Calendar } from 'lucide-react';
-import ThemeToggle from './ThemeToggle';
 
 export default function Navbar() {
   const { user, role, sessions, activeSession, setActiveSession, logout } = useAuth();
@@ -33,32 +32,29 @@ export default function Navbar() {
           </div>
         </div>
 
-        {/* Right Session, Theme Toggle & Profile Actions */}
+        {/* Right Session & Profile Actions */}
         <div className="flex items-center gap-2.5 sm:gap-4">
           {/* Academic Session Selector */}
           {sessions && sessions.length > 0 && (
-            <div className="hidden sm:flex items-center gap-1.5 text-xs text-on-surface-variant dark:text-slate-300 bg-surface-container-low dark:bg-slate-800/80 border border-glass-border dark:border-slate-700 px-3 py-1.5 rounded-full shadow-xs">
-              <Calendar className="w-3.5 h-3.5 text-secondary dark:text-cyan-400" />
-              <span className="font-medium text-outline dark:text-slate-400">Session:</span>
+            <div className="hidden sm:flex items-center gap-1.5 text-xs text-on-surface-variant bg-surface-container-low border border-glass-border px-3 py-1.5 rounded-full shadow-xs">
+              <Calendar className="w-3.5 h-3.5 text-secondary" />
+              <span className="font-medium text-outline">Session:</span>
               <select
                 value={activeSession?.id || ''}
                 onChange={(e) => {
                   const selected = sessions.find((s) => s.id === parseInt(e.target.value));
                   if (selected) setActiveSession(selected);
                 }}
-                className="bg-transparent font-semibold text-on-surface dark:text-slate-100 focus:outline-none cursor-pointer"
+                className="bg-transparent font-semibold text-on-surface focus:outline-none cursor-pointer"
               >
                 {sessions.map((s) => (
-                  <option key={s.id} value={s.id} className="dark:bg-slate-800 dark:text-slate-100">
+                  <option key={s.id} value={s.id}>
                     {s.name} {s.is_active ? '• Active' : ''}
                   </option>
                 ))}
               </select>
             </div>
           )}
-
-          {/* Theme Toggle (Dark / Light) */}
-          <ThemeToggle />
 
           {/* User profile & Role Badge */}
           {user && (
